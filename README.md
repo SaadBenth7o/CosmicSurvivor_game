@@ -130,10 +130,10 @@ Le **tableau des meilleurs scores** affiche une colonne **Mode** pour chaque par
 
 ## Respect des consignes du cours et règles (rules.md)
 
-Le fichier **`rules.md`** (à la racine du projet, dans `11-CosmicSurvivor/`) définit les consignes à respecter. Résumé :
+Le fichier **`rules.md`** (à la racine du projet, dans `CosmicSurvivor/`) définit les consignes à respecter. Résumé :
 
 - **Règle 1 — Base :** **`vehicle.js` n’est jamais modifié.** Il contient la classe `Vehicle` et toutes les méthodes de steering (seek, flee, arrive, pursue, evade, wander, avoidObstacles, separate, boundaries, edges).
-- **Règle 2 — Sous-classes :** Toutes les entités sont des **sous-classes** dans `vehicles/` : `PlayerVehicle`, `HeartSegment`, `HunterVehicle`, `ObstacleVehicle`. Chacune surcharge `applyBehaviors(world)`, `show()`, `update()`.
+- **Règle 2 — Sous-classes :** Toutes les entités sont des **sous-classes** dans `vehicles/` : `PlayerVehicle`, `HunterVehicle`, `ObstacleVehicle`. Chacune surcharge `applyBehaviors(world)`, `show()`, `update()`.
 - **Règle 3 — Forces composables :** Chaque comportement **retourne** un vecteur force (il ne l’applique pas). Dans `applyBehaviors(world)` : appeler les comportements, multiplier chaque force par un **poids**, sommer, puis appliquer une seule fois avec `applyForce()`. Les forces sont bornées par `maxForce` et `maxSpeed`.
 - **Règle 7 — Architecture :** `sketch.js` = entrée principale (preload, setup, draw, UI, `Particle`, `Collectable`). États de jeu : `"menu"`, `"countdown"`, `"playing"`, `"gameover"`, `"levelup"`, `"victory"`. L’objet **`world`** (player, hunters, obstacles, checkpoints, allVehicles, debugMode) est passé à tous les `applyBehaviors(world)`.
 
@@ -161,7 +161,6 @@ Les règles complètes (assets, style, tableau des comportements) sont dans **`r
 | Entité | Comportements de steering utilisés |
 |--------|-----------------------------------|
 | **PlayerVehicle** | `arrive` (souris), `arrive` (étoile proche), `avoidObstacles`, `separate`, `boundaries` |
-| **HeartSegment** | `arrive` (suit le segment précédent — pattern snake / Projet 3) |
 | **StarSegment** | `arrive` (snake) ou `separate` + `arrive` (cohesion) + align (banc / Projet 7) |
 | **HunterVehicle** | `pursue` (joueur en vue), `wander` (hors vue), `avoidObstacles`, `separate`, `boundaries` |
 | **ObstacleVehicle** | `wander`, `separate`, `flee` (étoiles), wrap-around (hors steering) |
@@ -178,12 +177,6 @@ Les règles complètes (assets, style, tableau des comportements) sont dans **`r
 
 ---
 
-## Lancer le jeu
-
-- Ouvrir `index.html` dans un navigateur (ou servir le dossier avec un serveur HTTP, ex. `python -m http.server 8888` puis `http://localhost:8888`).
-- Un script **`run.bat`** est fourni pour démarrer un serveur et ouvrir le jeu sous Windows.
-
----
 
 ## Résumé
 
