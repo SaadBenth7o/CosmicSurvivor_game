@@ -1,5 +1,5 @@
-// HeartSegment - Un cœur qui suit le segment précédent (comportement snake/worm - Projet 3 Arrival)
-// Extends Vehicle, utilise arrive() pour le suivi souple
+// Cœurs : affichés uniquement en barre en haut (sketch.js), pas de chaîne qui suit le joueur.
+// HeartSegment - Conservé pour règles (sous-classe Vehicle) ; non utilisé en chaîne.
 class HeartSegment extends Vehicle {
   constructor(x, y, index) {
     super(x, y);
@@ -7,43 +7,115 @@ class HeartSegment extends Vehicle {
     this.maxForce = 0.8;
     this.r = 14;
     this.index = index;
-    this.alive = true;      // true = full heart, false = dead heart
-    this.targetPos = null;   // Position à suivre (segment précédent)
+    this.alive = true;
+    this.targetPos = null;
   }
-
-  // Override applyBehaviors : chaque segment utilise arrive() vers le précédent
-  // Pattern identique au projet 3-Arrival (snake : anneau.arrive(anneauPrecedent.pos))
   applyBehaviors(world) {
     if (this.targetPos) {
-      let arriveForce = this.arrive(this.targetPos, 30);
-      arriveForce.mult(2.5);
-      this.applyForce(arriveForce);
+      let f = this.arrive(this.targetPos, 30);
+      f.mult(2.5);
+      this.applyForce(f);
     }
   }
-
-  // Override update : appelle super.update() (vel += acc, pos += vel, acc = 0)
-  update() {
-    super.update();
-  }
-
-  // Override show : affiche l'image full_HEART ou DeadHeart
+  update() { super.update(); }
   show() {
     push();
     translate(this.pos.x, this.pos.y);
     imageMode(CENTER);
     let size = this.r * 2;
-    if (this.alive) {
-      image(imgFullHeart, 0, 0, size, size);
-    } else {
-      image(imgDeadHeart, 0, 0, size, size);
-    }
+    if (this.alive) image(imgFullHeart, 0, 0, size, size);
+    else { tint(60, 60, 60); image(imgDeadHeart, 0, 0, size, size); noTint(); }
     imageMode(CORNER);
     pop();
   }
 }
 
-// PlayerVehicle - Véhicule contrôlé par le joueur avec cœurs en chaîne derrière
-// Extends Vehicle. Comportements : arrive (souris + étoiles), avoidObstacles, separate, boundaries
+// StarSegment - Étoile qui suit le joueur (snake = arrive chaîne, banc = separate + align + cohesion + arrive vers joueur)
+const STAR_FOLLOW_R = 4;
+
+class StarSegment extends Vehicle {
+  constructor(x, y, index) {
+    super(x, y);
+    this.maxSpeed = 7;
+    this.maxForce = 0.6;
+    this.r = STAR_FOLLOW_R;
+    this.index = index;
+    this.targetPos = null;
+  }
+
+  applyBehaviors(world) {
+    let force = createVector(0, 0);
+    if (world.obstacles && world.obstacles.length > 0) {
+      let avoidForce = this.avoidObstacles(world.obstacles);
+      avoidForce.mult(2.2);
+      force.add(avoidForce);
+    }
+    let segments = world.starSegments || [];
+    let snakeMode = world.starFollowMode !== "flock";
+
+    if (snakeMode) {
+      if (this.targetPos) {
+        let arriveForce = this.arrive(this.targetPos, 25);
+        arriveForce.mult(2.5);
+        force.add(arriveForce);
+      }
+    } else {
+      // Banc : separate + align + cohesion entre étoiles, ET arrive vers l'arrière du joueur pour suivre
+      if (world.playerRearPos) {
+        let followForce = this.arrive(world.playerRearPos, 80);
+        followForce.mult(1.4);
+        force.add(followForce);
+      }
+      let neighbors = segments.filter((s) => s !== this);
+      if (neighbors.length > 0) {
+        let sep = this.separate(neighbors, 40);
+        sep.mult(1.8);
+        force.add(sep);
+        let center = createVector(0, 0);
+        let avgVel = createVector(0, 0);
+        for (let n of neighbors) {
+          center.add(n.pos);
+          avgVel.add(n.vel);
+        }
+        center.div(neighbors.length);
+        avgVel.div(neighbors.length);
+        let cohesionForce = this.arrive(center, 50);
+        cohesionForce.mult(0.6);
+        force.add(cohesionForce);
+        if (avgVel.mag() > 0.01) {
+          let desired = avgVel.copy().setMag(this.maxSpeed);
+          let alignSteer = p5.Vector.sub(desired, this.vel);
+          alignSteer.limit(this.maxForce);
+          alignSteer.mult(0.5);
+          force.add(alignSteer);
+        }
+      }
+      if (world.boundaries) {
+        let boundForce = this.boundaries();
+        boundForce.mult(2.0);
+        force.add(boundForce);
+      }
+    }
+    this.applyForce(force);
+  }
+
+  update() {
+    super.update();
+  }
+
+  show() {
+    if (!imgStar || !imgStar.width) return;
+    push();
+    translate(this.pos.x, this.pos.y);
+    imageMode(CENTER);
+    let size = this.r * 2;
+    image(imgStar, 0, 0, size, size);
+    imageMode(CORNER);
+    pop();
+  }
+}
+
+// PlayerVehicle - Seules les étoiles suivent (snake/banc). 5 cœurs par défaut, 7 max (barre en haut uniquement).
 class PlayerVehicle extends Vehicle {
   constructor(x, y) {
     super(x, y);
@@ -51,31 +123,35 @@ class PlayerVehicle extends Vehicle {
     this.maxForce = 0.6;
     this.r = 20;
     this.color = "cyan";
-    this.lives = 4;
+    this.lives = 5;
+    this.maxLives = 5;
     this.invulnerable = false;
     this.invulnerableTime = 0;
     this.hitCooldown = 120;
-
-    // Créer les 4 cœurs derrière le joueur (chaîne souple style snake - Projet 3)
-    this.hearts = [];
-    for (let i = 0; i < 4; i++) {
-      let heart = new HeartSegment(x - (i + 1) * 25, y, i);
-      this.hearts.push(heart);
-    }
+    this.starFollowMode = "snake";
+    this.starSegments = [];
   }
 
-  // Override applyBehaviors : combine toutes les forces de steering avec poids
-  // Chaque comportement retourne une force ; on combine avec des poids ; limité par maxForce/maxSpeed
+  addHeart() {
+    if (this.maxLives >= 7) return;
+    this.maxLives++;
+    this.lives = this.maxLives;
+  }
+
+  getPlayerRearPos() {
+    let behind = this.vel.copy();
+    if (behind.mag() > 0.01) behind.normalize();
+    else behind = createVector(1, 0);
+    behind.mult(-this.r * 1.5);
+    return p5.Vector.add(this.pos, behind);
+  }
+
   applyBehaviors(world) {
     let force = createVector(0, 0);
-
-    // 1. ARRIVE vers la souris (utilise arrive() de Vehicle — ralentit quand proche)
     let mousePos = createVector(mouseX, mouseY);
     let arriveForce = this.arrive(mousePos, 50);
-    arriveForce.mult(3.0); // Poids fort pour réactivité au contrôle souris
+    arriveForce.mult(3.0);
     force.add(arriveForce);
-
-    // 2. ARRIVE vers l'étoile la plus proche (attraction légère)
     if (world.checkpoints && world.checkpoints.length > 0) {
       let nearestStar = null;
       let nearestDist = Infinity;
@@ -90,73 +166,62 @@ class PlayerVehicle extends Vehicle {
       }
       if (nearestStar) {
         let starForce = this.arrive(nearestStar.pos, 80);
-        starForce.mult(0.15); // Poids faible pour ne pas gêner le contrôle
+        starForce.mult(0.15);
         force.add(starForce);
       }
     }
-
-    // 3. AVOID OBSTACLES (utilise avoidObstacles() de Vehicle)
     if (world.obstacles && world.obstacles.length > 0) {
       let avoidForce = this.avoidObstacles(world.obstacles);
       avoidForce.mult(2.0);
       force.add(avoidForce);
     }
-
-    // 4. SEPARATE des autres véhicules (utilise separate() de Vehicle)
     if (world.allVehicles) {
       let separateForce = this.separate(world.allVehicles, 60);
       separateForce.mult(1.5);
       force.add(separateForce);
     }
-
-    // 5. BOUNDARIES : force de répulsion aux bords (utilise boundaries() de Vehicle)
     let boundariesForce = this.boundaries();
     boundariesForce.mult(3.0);
     force.add(boundariesForce);
-
     this.applyForce(force);
   }
 
-  // Override update : met à jour la chaîne de cœurs + gestion invulnérabilité
   update() {
     super.update();
 
-    // Mettre à jour les cœurs en chaîne (chacun suit le précédent avec arrive)
-    for (let i = 0; i < this.hearts.length; i++) {
-      let heart = this.hearts[i];
-      if (i === 0) {
-        // Le premier cœur suit l'arrière de la tête
-        let behind = this.vel.copy();
-        if (behind.mag() > 0.01) {
-          behind.normalize();
-          behind.mult(-this.r * 1.2);
-        } else {
-          behind = createVector(-this.r * 1.2, 0);
-        }
-        heart.targetPos = p5.Vector.add(this.pos, behind);
-      } else {
-        // Les cœurs suivants suivent le cœur précédent
-        heart.targetPos = this.hearts[i - 1].pos;
-      }
-      heart.applyBehaviors(world);
-      heart.update();
+    let targetCount = 0;
+    if (world && typeof world.starsCollected === "number") {
+      targetCount = min(max(0, floor(world.starsCollected)), 100);
+    }
+    while (this.starSegments.length < targetCount) {
+      let idx = this.starSegments.length;
+      this.starSegments.push(new StarSegment(this.pos.x - (idx + 1) * 12, this.pos.y, idx));
+    }
+    while (this.starSegments.length > targetCount) {
+      this.starSegments.pop();
     }
 
-    // Synchroniser l'état alive/dead des cœurs avec les vies
-    for (let i = 0; i < this.hearts.length; i++) {
-      this.hearts[i].alive = (i < this.lives);
+    if (world) {
+      world.starSegments = this.starSegments;
+      world.starFollowMode = this.starFollowMode;
+      world.playerRearPos = this.getPlayerRearPos();
+      world.boundaries = true;
+    }
+    let rearPos = this.getPlayerRearPos();
+    for (let i = 0; i < this.starSegments.length; i++) {
+      let seg = this.starSegments[i];
+      if (i === 0) seg.targetPos = rearPos;
+      else seg.targetPos = this.starSegments[i - 1].pos;
+      seg.applyBehaviors(world);
+      seg.update();
     }
 
-    // Gestion de l'invulnérabilité
     if (this.invulnerable) {
       this.invulnerableTime--;
-      if (this.invulnerableTime <= 0) {
-        this.invulnerable = false;
-      }
+      if (this.invulnerableTime <= 0) this.invulnerable = false;
     }
   }
 
-  // Position de la tête (pointe avant du personnage)
   getHeadPos() {
     let headOffset = this.vel.copy();
     if (headOffset.mag() > 0.01) {
@@ -177,7 +242,7 @@ class PlayerVehicle extends Vehicle {
   }
 
   heal(amount = 1) {
-    this.lives = min(this.lives + amount, 4);
+    this.lives = min(this.lives + amount, this.maxLives);
   }
 
   activateShield(duration = 300) {
@@ -185,52 +250,39 @@ class PlayerVehicle extends Vehicle {
     this.invulnerableTime = duration;
   }
 
-  // Override show : affiche l'image main_character + cœurs
   show() {
-    // D'abord dessiner les cœurs (derrière le joueur)
-    for (let i = this.hearts.length - 1; i >= 0; i--) {
-      this.hearts[i].show();
+    for (let i = this.starSegments.length - 1; i >= 0; i--) {
+      this.starSegments[i].show();
     }
-
-    // Dessiner le joueur (la tête)
     push();
     translate(this.pos.x, this.pos.y);
-
     let alpha = 255;
     if (this.invulnerable) {
       alpha = (frameCount % 10 < 5) ? 150 : 255;
     }
-
     if (this.vel.mag() > 0.01) {
       rotate(this.vel.heading() + HALF_PI);
     }
-
-    // Image du personnage principal
     imageMode(CENTER);
     if (this.invulnerable) tint(255, alpha);
     image(imgMainCharacter, 0, 0, this.r * 2.5, this.r * 2.5);
     if (this.invulnerable) noTint();
     imageMode(CORNER);
-
-    // Cercle d'invulnérabilité / bouclier
     if (this.invulnerable) {
       noFill();
       stroke(255, 255, 0, alpha);
       strokeWeight(2);
       circle(0, 0, this.r * 2.5);
     }
-
     pop();
   }
 
-  // Debug : visualisation des forces et zones
   showDebug() {
     push();
     noFill();
     stroke(0, 255, 255, 100);
     strokeWeight(1);
     circle(this.pos.x, this.pos.y, this.r * 2);
-    // Point de la tête (zone de dégâts)
     let headPos = this.getHeadPos();
     fill(255, 0, 0);
     noStroke();
@@ -238,26 +290,20 @@ class PlayerVehicle extends Vehicle {
     stroke(255, 0, 0, 80);
     noFill();
     circle(headPos.x, headPos.y, this.r * 1.5);
-    // Vecteur vélocité
     stroke(0, 255, 255, 200);
     strokeWeight(2);
     let v = this.vel.copy().mult(10);
     line(this.pos.x, this.pos.y, this.pos.x + v.x, this.pos.y + v.y);
-    // Ligne vers la souris (arrive target)
     stroke(0, 255, 255, 60);
     strokeWeight(1);
     line(this.pos.x, this.pos.y, mouseX, mouseY);
-    // Chaîne des cœurs (arrive chain)
-    stroke(255, 0, 100, 80);
-    for (let i = 0; i < this.hearts.length; i++) {
-      let h = this.hearts[i];
-      if (i === 0) {
-        line(this.pos.x, this.pos.y, h.pos.x, h.pos.y);
-      } else {
-        line(this.hearts[i - 1].pos.x, this.hearts[i - 1].pos.y, h.pos.x, h.pos.y);
-      }
+    stroke(255, 200, 0, 80);
+    for (let i = 0; i < this.starSegments.length; i++) {
+      let s = this.starSegments[i];
+      if (i === 0) line(this.pos.x, this.pos.y, s.pos.x, s.pos.y);
+      else line(this.starSegments[i - 1].pos.x, this.starSegments[i - 1].pos.y, s.pos.x, s.pos.y);
       noFill();
-      circle(h.pos.x, h.pos.y, h.r * 2);
+      circle(s.pos.x, s.pos.y, s.r * 2);
     }
     pop();
   }

@@ -1,6 +1,6 @@
 // Classe Checkpoint - Étoiles collectables qui réapparaissent (utilise star.png)
 class Checkpoint {
-  constructor(x, y, radius = 30) {
+  constructor(x, y, radius = 15) {
     this.pos = createVector(x, y);
     this.r = radius;
     this.collected = false;
@@ -11,19 +11,13 @@ class Checkpoint {
 
   display() {
     if (this.collected) return;
-    
     push();
     translate(this.pos.x, this.pos.y);
-    
-    // Animation de pulsation (agrandir/rétrécir) sans rotation
     this.pulse += 0.08;
-    let pulseSize = this.r + sin(this.pulse) * 5;
-    
-    // Afficher l'image star.png
+    let pulseSize = this.r + sin(this.pulse) * 2.5;
     imageMode(CENTER);
     image(imgStar, 0, 0, pulseSize * 2, pulseSize * 2);
     imageMode(CORNER);
-    
     pop();
   }
 

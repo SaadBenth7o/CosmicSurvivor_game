@@ -1,4 +1,4 @@
-// Cosmic Survivor - Jeu de survie spatiale avec comportements de steering
+// Cosmic Survivor - Jeu de survie spatial (comportements de steering)
 
 // Variables globales
 let player;
@@ -12,7 +12,7 @@ let nbHunters = 1;
 let nbObstacles = 24;
 let nbCheckpoints = 8;
 
-// Images des obstacles (chargées dans preload)
+// Images (preload)
 let obstacleImagePaths = [
   "./Assets/obstacle1.png",
   "./Assets/obsatcle2.png",
@@ -21,50 +21,50 @@ let obstacleImagePaths = [
   "./Assets/Obstacle5.png"
 ];
 let obstacleImages = [];
-
-// Images UI et collectables (chargées dans preload)
-let imgStar, imgShield, imgFullHeart, imgDeadHeart;
-let imgMainCharacter, imgMonster0, imgMonster1, imgMonsterMax;
+let imgStar, imgStarScore, imgShield, imgFullHeart, imgDeadHeart;
+let imgMainCharacter, imgMonster0, imgMonster1, imgMonsterMax, imgMonsterSnake;
 
 // État du jeu
 let gameState = "menu"; // "menu", "countdown", "playing", "gameover", "levelup", "victory"
-let isResuming = false; // true si on reprend une partie en cours
+let difficultyMode = "normal"; // "normal", "facile", "moyen", "difficile"
 let score = 0;
 let timeSurvived = 0;
 let particles = [];
 let starsCollected = 0;
-let currentLevel = 1;
-let maxLevel = 15;
+let currentLevel = 0;
+let maxLevel = 20;
 let collectables = [];
 let lastCollectableSpawn = 0;
 let collectableSpawnInterval = 600;
 
-// Debug mode
-let debugMode = false;
+// Countdown 3-2-1 (ne pas rester bloqué à 1)
+const BG_THEME_INTERVAL_MS = 60; // frames par chiffre (1 seconde)
+let countdownTimer = 0;
+let countdownNumber = 3;
 
-// Level-up animation
+let debugMode = false;
 let levelUpTimer = 0;
 let levelUpDuration = 120;
-
-// Victory animation
 let victoryTimer = 0;
 let slowMotionFactor = 1;
 
-// Countdown (3-2-1)
-let countdownTimer = 0;
-let countdownDuration = 180; // 3 secondes à 60fps
-let countdownValue = 3;
+// Sons (Web Audio API)
+let audioCtx = null;
+let bgGain = null;
+let sfxGain = null;
 
-// Historique des meilleurs scores (session)
-let scoreHistory = []; // [{score, level, stars, time}]
-
-// Fond d'espace généré
+// Fond d'espace
 let stars = [];
 
-// Indique si le jeu a déjà été initialisé une fois
-let gameInitialized = false;
+// Police pixel (Press Start 2P) pour tout le projet
+let pixelFont;
+
+// Zones cliquables du menu (remplies par drawMenu, lues par mousePressed)
+let menuModeButtonBounds = [];
+let menuPlayButtonBounds = null;
 
 function generateStars() {
+  // Générer des étoiles pour le fond d'espace
   stars = [];
   for (let i = 0; i < 200; i++) {
     stars.push({
@@ -77,11 +77,13 @@ function generateStars() {
 }
 
 function preload() {
+  pixelFont = loadFont("https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/pressstart2p/PressStart2P-Regular.ttf");
   obstacleImages = [];
   for (let i = 0; i < obstacleImagePaths.length; i++) {
     obstacleImages.push(loadImage(obstacleImagePaths[i]));
   }
   imgStar = loadImage("./Assets/star.png");
+  imgStarScore = loadImage("./Assets/star2.png");
   imgShield = loadImage("./Assets/shield.png");
   imgFullHeart = loadImage("./Assets/full_HEART.png");
   imgDeadHeart = loadImage("./Assets/DeadHeart.png");
@@ -89,51 +91,49 @@ function preload() {
   imgMonster0 = loadImage("./Assets/monster0.png");
   imgMonster1 = loadImage("./Assets/monster1.png");
   imgMonsterMax = loadImage("./Assets/MonsterMax.png");
+  imgMonsterSnake = loadImage("./Assets/monster_snake.png");
 }
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
+  if (pixelFont) textFont(pixelFont);
   generateStars();
-
-  if (!gameInitialized) {
-    // Premier lancement : afficher le menu sans initialiser le jeu
-    gameState = "menu";
-    isResuming = false;
-    gameInitialized = true;
-    return;
-  }
-
-  // Initialisation / réinitialisation du jeu
-  initGame();
-}
-
-function initGame() {
+  
+  // Créer les checkpoints
   createCheckpoints();
+  
+  // Créer les obstacles (images déjà chargées dans preload depuis Assets/)
   createObstacles();
+  
+  // Créer le joueur
   player = new PlayerVehicle(width / 2, height / 2);
-  nbHunters = 1;
+  
+  // Créer les hunters (commence avec 1)
   createHunters();
-
-  score = 0;
-  timeSurvived = 0;
+  
+  // Initialiser les variables de progression
   starsCollected = 0;
-  currentLevel = 1;
+  currentLevel = 0;
   collectables = [];
-  particles = [];
   lastCollectableSpawn = 0;
-
+  
   world = {
     player: player,
     hunters: hunters,
     obstacles: obstacles,
     checkpoints: checkpoints,
     allVehicles: [player, ...hunters],
-    debugMode: false
+    debugMode: false,
+    starsCollected: 0,
+    starSegments: [],
+    starFollowMode: "snake"
   };
 }
 
 function createCheckpoints() {
   checkpoints = [];
+  
+  // Créer des étoiles collectables réparties sur l'écran
   for (let i = 0; i < nbCheckpoints; i++) {
     let x = random(100, width - 100);
     let y = random(100, height - 100);
@@ -145,17 +145,21 @@ function createCheckpoints() {
 
 function createObstacles() {
   obstacles = [];
-  let minDist = 140;
+  let minDist = 140; // Distance min entre obstacles pour ne pas se chevaucher
+  
   for (let i = 0; i < nbObstacles; i++) {
     let x, y, valid = false, attempts = 0;
-    let startFromEdge = random() < 0.3;
+    // Certains obstacles commencent sur l'écran, d'autres depuis les bords (entrant)
+    let startFromEdge = random() < 0.3; // 30% commencent hors écran
+    
     while (!valid && attempts < 80) {
       if (startFromEdge) {
+        // Spawn depuis un bord aléatoire
         let side = floor(random(4));
-        if (side === 0) { x = -60; y = random(height); }
-        else if (side === 1) { x = width + 60; y = random(height); }
-        else if (side === 2) { x = random(width); y = -60; }
-        else { x = random(width); y = height + 60; }
+        if (side === 0) { x = -60; y = random(height); }        // gauche
+        else if (side === 1) { x = width + 60; y = random(height); } // droite
+        else if (side === 2) { x = random(width); y = -60; }    // haut
+        else { x = random(width); y = height + 60; }             // bas
       } else {
         x = random(120, width - 120);
         y = random(120, height - 120);
@@ -170,6 +174,7 @@ function createObstacles() {
       attempts++;
     }
     if (valid) {
+      // Distribuer les 5 images de manière équitable (chaque image utilisée au moins 2 fois)
       let img = obstacleImages.length > 0 ? obstacleImages[i % obstacleImages.length] : null;
       obstacles.push(new ObstacleVehicle(x, y, random(45, 70), img));
     }
@@ -178,18 +183,30 @@ function createObstacles() {
 
 function createHunters() {
   hunters = [];
-  for (let i = 0; i < nbHunters; i++) {
+  let n = nbHunters;
+  for (let i = 0; i < n; i++) {
     let x = random(width);
     let y = random(height);
-    hunters.push(new HunterVehicle(x, y, 0, imgMonster0, 1));
+    let type, img, dmg, vision;
+    if (difficultyMode === "facile") {
+      type = 0; img = imgMonster0; dmg = 1; vision = 300;
+    } else if (difficultyMode === "moyen") {
+      if (currentLevel < 10) { type = 1; img = imgMonster1; dmg = 2; vision = 200; }
+      else { type = 2; img = imgMonsterMax; dmg = 3; vision = 130; }
+    } else if (difficultyMode === "difficile") {
+      if (currentLevel < 10) { type = 2; img = imgMonsterMax; dmg = 3; vision = 130; }
+      else { type = 3; img = imgMonsterSnake; dmg = 4; vision = 20; }
+    } else {
+      if (currentLevel <= 4) { type = 0; img = imgMonster0; dmg = 1; vision = 300; }
+      else if (currentLevel <= 9) { type = 1; img = imgMonster1; dmg = 2; vision = 200; }
+      else if (currentLevel <= 14) { type = 2; img = imgMonsterMax; dmg = 3; vision = 130; }
+      else { type = 3; img = imgMonsterSnake; dmg = 4; vision = 20; }
+    }
+    hunters.push(new HunterVehicle(x, y, type, img, dmg, vision));
   }
 }
 
-// ============================
-//         DRAW PRINCIPAL
-// ============================
 function draw() {
-  // Fond d'espace (toujours affiché)
   background(10, 10, 20);
   for (let star of stars) {
     fill(star.brightness);
@@ -203,32 +220,43 @@ function draw() {
     circle(star.x, star.y, star.size * 1.5);
   }
 
-  // === ÉTAT: MENU / PAGE D'ACCUEIL ===
+  // Toujours synchroniser world avec les tableaux actuels (évite bugs après resize / recréation)
+  if (world) {
+    world.obstacles = obstacles;
+    world.checkpoints = checkpoints;
+    world.player = player;
+    world.hunters = hunters;
+    world.allVehicles = player && hunters ? [player, ...hunters] : [];
+    world.debugMode = debugMode;
+    world.starsCollected = starsCollected;
+    if (player && player.starFollowMode !== undefined) world.starFollowMode = player.starFollowMode;
+  }
+
+  // === ÉTAT: MENU ===
   if (gameState === "menu") {
-    // Si on est en pause, afficher le jeu figé derrière
-    if (isResuming && world) {
-      drawFrozenGame();
-      // Overlay sombre
-      fill(0, 0, 0, 160);
-      noStroke();
-      rect(0, 0, width, height);
-    }
-    drawMenuScreen();
+    drawMenu();
     return;
   }
 
   // === ÉTAT: COUNTDOWN 3-2-1 ===
   if (gameState === "countdown") {
-    // Afficher le jeu figé derrière
-    if (world) drawFrozenGame();
-    drawCountdown();
+    countdownTimer++;
+    if (countdownTimer >= BG_THEME_INTERVAL_MS) {
+      countdownTimer = 0;
+      countdownNumber--;
+      if (countdownNumber <= 0) {
+        gameState = "playing";
+        countdownNumber = 3;
+        if (audioCtx) startBgMusic();
+      }
+    }
+    if (player) player.show();
+    drawCountdownScreen();
+    drawUI();
     return;
   }
-
-  // Mettre à jour debugMode dans world
-  if (world) world.debugMode = debugMode;
-
-  // Mettre à jour et afficher les obstacles
+  
+  // Mettre à jour et afficher les obstacles (va-et-vient)
   for (let obs of obstacles) {
     obs.applyBehaviors(world);
     obs.update();
@@ -236,13 +264,13 @@ function draw() {
     obs.show();
     if (debugMode) obs.showDebug();
   }
-
-  // Afficher les checkpoints
+  
+  // Afficher les checkpoints (étoiles)
   for (let cp of checkpoints) {
     cp.update();
     cp.display();
   }
-
+  
   // Afficher les particules
   for (let i = particles.length - 1; i >= 0; i--) {
     particles[i].update();
@@ -251,122 +279,149 @@ function draw() {
       particles.splice(i, 1);
     }
   }
-
-  // === ÉTAT: VICTOIRE ===
+  
+  // === ÉTAT: VICTOIRE (20 niveaux atteints) ===
   if (gameState === "victory") {
     victoryTimer++;
     slowMotionFactor = max(0.05, 1 - victoryTimer / 120);
+    
+    // Faire exploser les hunters en slow motion
     for (let hunter of hunters) {
       hunter.vel.mult(slowMotionFactor);
       hunter.update();
       hunter.show();
+      // Particules d'explosion continues
       if (frameCount % 3 === 0) {
         createImpactParticles(hunter.pos.x + random(-20, 20), hunter.pos.y + random(-20, 20));
       }
     }
     player.show();
+    
+    // Afficher le message de victoire
     drawVictoryScreen();
     drawUI();
     return;
   }
-
-  // === ÉTAT: LEVEL UP ===
+  
+  // === ÉTAT: LEVEL UP (pause 2 secondes) ===
   if (gameState === "levelup") {
     levelUpTimer++;
+    
+    // Afficher tout figé
     player.show();
     for (let hunter of hunters) { hunter.show(); }
     for (let i = collectables.length - 1; i >= 0; i--) {
       collectables[i].display();
     }
+    
     drawLevelUpScreen();
     drawUI();
+    
+    // Après 2 secondes, reprendre le jeu
     if (levelUpTimer >= levelUpDuration) {
       gameState = "playing";
       levelUpTimer = 0;
     }
     return;
   }
-
-  // === ÉTAT: PLAYING ===
+  
   if (gameState === "playing") {
-    timeSurvived += 1 / 60;
+    timeSurvived += 1/60;
     world.allVehicles = [player, ...hunters];
-
+    
+    // Mettre à jour le joueur (boundaries inclus dans applyBehaviors)
     player.applyBehaviors(world);
     player.update();
     player.edges();
-
-    // Collisions étoiles
+    
     for (let cp of checkpoints) {
       if (cp.checkCollision(player)) {
         score += 50;
         starsCollected++;
+        if (audioCtx) playSfx("collect");
         createStarParticles(cp.pos.x, cp.pos.y);
-
-        let newLevel = floor(starsCollected / 5) + 1;
+        
+        // Chaque 5 étoiles = nouveau niveau (niveaux 0 à 19 = 20 niveaux)
+        let newLevel = floor(starsCollected / 5);
         if (newLevel > currentLevel) {
-          currentLevel = newLevel;
-          player.heal(4);
-
-          if (currentLevel > maxLevel) {
-            saveScore();
+          if (newLevel >= maxLevel) {
             gameState = "victory";
             victoryTimer = 0;
+            if (audioCtx) playSfx("victory");
             return;
           }
-
-          while (hunters.length < currentLevel) {
+          currentLevel = newLevel;
+          player.lives = min(player.maxLives, player.lives + 4);
+          while (hunters.length < currentLevel + 1) {
             let x = random(100, width - 100);
             let y = random(100, height - 100);
-            let monsterType, monsterImg, monsterDamage;
-            if (currentLevel <= 5) {
-              monsterType = 0; monsterImg = imgMonster0; monsterDamage = 1;
-            } else if (currentLevel <= 10) {
-              monsterType = 1; monsterImg = imgMonster1; monsterDamage = 2;
+            let type, img, dmg, vision;
+            if (difficultyMode === "facile") { type = 0; img = imgMonster0; dmg = 1; vision = 300; }
+            else if (difficultyMode === "moyen") {
+              if (currentLevel < 10) { type = 1; img = imgMonster1; dmg = 2; vision = 200; }
+              else { type = 2; img = imgMonsterMax; dmg = 3; vision = 130; }
+            } else if (difficultyMode === "difficile") {
+              if (currentLevel < 10) { type = 2; img = imgMonsterMax; dmg = 3; vision = 130; }
+              else { type = 3; img = imgMonsterSnake; dmg = 4; vision = 20; }
             } else {
-              monsterType = 2; monsterImg = imgMonsterMax; monsterDamage = 3;
+              if (currentLevel <= 4) { type = 0; img = imgMonster0; dmg = 1; vision = 300; }
+              else if (currentLevel <= 9) { type = 1; img = imgMonster1; dmg = 2; vision = 200; }
+              else if (currentLevel <= 14) { type = 2; img = imgMonsterMax; dmg = 3; vision = 130; }
+              else { type = 3; img = imgMonsterSnake; dmg = 4; vision = 20; }
             }
-            hunters.push(new HunterVehicle(x, y, monsterType, monsterImg, monsterDamage));
+            hunters.push(new HunterVehicle(x, y, type, img, dmg, vision));
           }
-
+          if (audioCtx) playSfx("levelup");
           gameState = "levelup";
           levelUpTimer = 0;
           return;
         }
       }
     }
-
-    // Collisions collectables
+    
+    // Collisions avec les collectables
     for (let i = collectables.length - 1; i >= 0; i--) {
       let collectable = collectables[i];
       if (collectable.checkCollision(player)) {
         if (collectable.type === "heart") {
-          player.heal(1);
-          createStarParticles(collectable.pos.x, collectable.pos.y);
+          if (player.lives < player.maxLives) {
+            player.heal(1);
+            createStarParticles(collectable.pos.x, collectable.pos.y);
+            if (audioCtx) playSfx("collect");
+            collectables.splice(i, 1);
+          } else if (player.maxLives < 7) {
+            player.addHeart();
+            createStarParticles(collectable.pos.x, collectable.pos.y);
+            if (audioCtx) playSfx("collect");
+            collectables.splice(i, 1);
+          }
         } else if (collectable.type === "shield") {
           player.activateShield(300);
           createStarParticles(collectable.pos.x, collectable.pos.y);
+          if (audioCtx) playSfx("collect");
+          collectables.splice(i, 1);
         }
-        collectables.splice(i, 1);
       }
     }
-
-    // Collisions hunters (tête uniquement)
+    
+    // Collisions avec les hunters — dégâts à la tête uniquement ; son dégâts seulement si pas invulnérable
     let headPos = player.getHeadPos();
     for (let hunter of hunters) {
       let distance = p5.Vector.dist(headPos, hunter.pos);
       if (distance < player.r * 0.8 + hunter.r) {
         let dmg = hunter.damage || 1;
+        let wasVuln = !player.invulnerable;
         if (player.takeDamage(dmg)) {
-          saveScore();
           gameState = "gameover";
+          if (audioCtx) playSfx("gameover");
         } else {
+          if (wasVuln && audioCtx) playSfx("damage");
           createImpactParticles(headPos.x, headPos.y);
         }
       }
     }
-
-    // Spawn collectables
+    
+    // Spawn de collectables
     if (frameCount - lastCollectableSpawn > collectableSpawnInterval && random() < 0.3) {
       let x = random(100, width - 100);
       let y = random(100, height - 100);
@@ -375,8 +430,8 @@ function draw() {
       lastCollectableSpawn = frameCount;
       collectableSpawnInterval = random(600, 1200);
     }
-
-    // Afficher collectables
+    
+    // Mettre à jour et afficher les collectables
     for (let i = collectables.length - 1; i >= 0; i--) {
       collectables[i].update();
       collectables[i].display();
@@ -384,407 +439,404 @@ function draw() {
         collectables.splice(i, 1);
       }
     }
-
-    // Mettre à jour hunters
+    
+    // Mettre à jour les hunters (boundaries inclus dans applyBehaviors)
     for (let hunter of hunters) {
       hunter.applyBehaviors(world);
       hunter.update();
       hunter.edges();
     }
-
-    // Afficher véhicules
+    
+    // Afficher tous les véhicules
     player.show();
     for (let hunter of hunters) {
       hunter.show();
       if (debugMode) hunter.showDebug();
     }
+    
+    // Debug du joueur
     if (debugMode) player.showDebug();
   }
-
-  // UI en jeu
+  
+  // Interface utilisateur (toujours affichée)
   drawUI();
-  if (debugMode) drawDebugOverlay();
+  
+  // Debug : boundaries
+  if (debugMode) {
+    drawDebugOverlay();
+  }
 }
 
-// ============================
-//    DESSINER LE JEU FIGE
-// ============================
-function drawFrozenGame() {
-  for (let obs of obstacles) { obs.show(); }
-  for (let cp of checkpoints) { cp.display(); }
-  for (let c of collectables) { c.display(); }
-  player.show();
-  for (let h of hunters) { h.show(); }
-}
-
-// ============================
-//      PAGE D'ACCUEIL / MENU
-// ============================
-function drawMenuScreen() {
-  push();
-
-  // Panneau central semi-transparent
-  let panelW = min(width - 60, 1100);
-  let panelH = min(height - 60, 700);
-  let panelX = (width - panelW) / 2;
-  let panelY = (height - panelH) / 2;
-
-  fill(10, 10, 30, 220);
-  stroke(100, 150, 255, 120);
-  strokeWeight(2);
-  rect(panelX, panelY, panelW, panelH, 15);
-
-  // ===== TITRE =====
-  noStroke();
-  fill(255, 215, 0);
-  textSize(42);
-  textAlign(CENTER, TOP);
-  text("COSMIC SURVIVOR", width / 2, panelY + 20);
-
-  // Ligne de séparation sous le titre
-  stroke(100, 150, 255, 60);
-  strokeWeight(1);
-  line(panelX + 30, panelY + 72, panelX + panelW - 30, panelY + 72);
-
-  // ===== LAYOUT : Gauche (instructions) | Droite (scores) =====
-  let leftX = panelX + 30;
-  let leftW = panelW * 0.6;
-  let rightX = panelX + panelW * 0.63;
-  let rightW = panelW * 0.34;
-  let contentY = panelY + 85;
-
-  // ---- COLONNE GAUCHE : Concept & Instructions ----
-  noStroke();
-  fill(100, 200, 255);
-  textSize(18);
-  textAlign(LEFT, TOP);
-  text("Concept du jeu", leftX, contentY);
-
-  fill(220);
-  textSize(13);
-  let conceptText = "Survivez dans l'espace en collectant des etoiles pour progresser a travers 15 niveaux. " +
-    "Evitez les monstres de plus en plus dangereux et naviguez entre les asteroides mobiles. " +
-    "Collectez 5 etoiles pour passer au niveau suivant. A chaque niveau, un nouvel ennemi apparait !";
-  text(conceptText, leftX, contentY + 25, leftW - 10, 80);
-
-  // Contrôles
-  let ctrlY = contentY + 110;
-  fill(100, 200, 255);
-  textSize(18);
-  text("Controles", leftX, ctrlY);
-
-  fill(220);
-  textSize(13);
-  text("Souris", leftX + 10, ctrlY + 25);
-  fill(180); text("Deplacer le personnage", leftX + 80, ctrlY + 25);
-  fill(220); text("D", leftX + 10, ctrlY + 42);
-  fill(180); text("Activer / Desactiver le mode Debug", leftX + 80, ctrlY + 42);
-  fill(220); text("P / Echap", leftX + 10, ctrlY + 59);
-  fill(180); text("Mettre en pause (revenir au menu)", leftX + 80, ctrlY + 59);
-
-  // Monstres
-  let monY = ctrlY + 90;
-  fill(100, 200, 255);
-  textSize(18);
-  text("Les monstres", leftX, monY);
-
-  // Monster 0
-  let mRowY = monY + 28;
-  if (imgMonster0 && imgMonster0.width > 0) {
-    imageMode(CENTER);
-    image(imgMonster0, leftX + 18, mRowY + 10, 32, 32);
-    imageMode(CORNER);
-  }
-  fill(255, 150, 150); textSize(13);
-  text("Monstre 0 (Niv. 1-5)", leftX + 40, mRowY);
-  fill(180); textSize(11);
-  text("1 coeur de degats  |  Vision: 300px  |  Lent mais vigilant", leftX + 40, mRowY + 16);
-
-  // Monster 1
-  mRowY += 42;
-  if (imgMonster1 && imgMonster1.width > 0) {
-    imageMode(CENTER);
-    image(imgMonster1, leftX + 18, mRowY + 10, 32, 32);
-    imageMode(CORNER);
-  }
-  fill(255, 100, 100); textSize(13);
-  text("Monstre 1 (Niv. 6-10)", leftX + 40, mRowY);
-  fill(180); textSize(11);
-  text("2 coeurs de degats  |  Vision: 200px  |  Rapide et dangereux", leftX + 40, mRowY + 16);
-
-  // Monster Max
-  mRowY += 42;
-  if (imgMonsterMax && imgMonsterMax.width > 0) {
-    imageMode(CENTER);
-    image(imgMonsterMax, leftX + 18, mRowY + 10, 32, 32);
-    imageMode(CORNER);
-  }
-  fill(255, 50, 50); textSize(13);
-  text("Monstre Max (Niv. 11-15)", leftX + 40, mRowY);
-  fill(180); textSize(11);
-  text("3 coeurs de degats  |  Vision: 130px  |  Mortel mais myope", leftX + 40, mRowY + 16);
-
-  // Niveaux
-  let lvlY = mRowY + 48;
-  fill(100, 200, 255);
-  textSize(18);
-  text("Progression", leftX, lvlY);
-  fill(180); textSize(12);
-  text("15 niveaux  |  5 etoiles par niveau  |  +1 ennemi par niveau", leftX + 10, lvlY + 24);
-  text("Vie restauree a chaque passage de niveau", leftX + 10, lvlY + 40);
-  text("Boucliers et coeurs apparaissent aleatoirement", leftX + 10, lvlY + 56);
-
-  // ---- COLONNE DROITE : Tableau des scores ----
-  // Ligne verticale de séparation
-  stroke(100, 150, 255, 40);
-  strokeWeight(1);
-  line(rightX - 15, contentY, rightX - 15, panelY + panelH - 80);
-
-  noStroke();
-  fill(255, 215, 0);
-  textSize(18);
-  textAlign(CENTER, TOP);
-  text("Meilleurs Scores", rightX + rightW / 2, contentY);
-
-  // En-têtes du tableau
-  let tableY = contentY + 30;
-  fill(150);
-  textSize(11);
-  textAlign(LEFT, TOP);
-  text("#", rightX + 5, tableY);
-  text("Score", rightX + 45, tableY);
-  text("Niveau", rightX + 110, tableY);
-  text("Temps", rightX + 170, tableY);
-  text("Etoiles", rightX + 230, tableY);
-
-  // Ligne sous les en-têtes
-  stroke(100, 150, 255, 40);
-  line(rightX + 5, tableY + 16, rightX + rightW - 10, tableY + 16);
-  noStroke();
-
-  // Afficher les 5 meilleurs scores
-  let medals = ["Or", "Argent", "Bronze"];
-  let medalColors = [[255, 215, 0], [200, 200, 210], [205, 127, 50]];
-
-  if (scoreHistory.length === 0) {
-    fill(120);
-    textSize(13);
-    textAlign(CENTER, TOP);
-    text("Aucun score pour le moment", rightX + rightW / 2, tableY + 40);
-    text("Jouez pour remplir ce tableau !", rightX + rightW / 2, tableY + 60);
-  } else {
-    for (let i = 0; i < min(scoreHistory.length, 5); i++) {
-      let entry = scoreHistory[i];
-      let rowY = tableY + 22 + i * 32;
-      textAlign(LEFT, TOP);
-
-      // Médaille ou numéro
-      if (i < 3) {
-        fill(medalColors[i][0], medalColors[i][1], medalColors[i][2]);
-        textSize(16);
-        // Dessiner un cercle médaille
-        let mx = rightX + 16;
-        let my = rowY + 8;
-        stroke(medalColors[i][0], medalColors[i][1], medalColors[i][2]);
-        strokeWeight(2);
-        noFill();
-        circle(mx, my, 22);
-        noStroke();
-        fill(medalColors[i][0], medalColors[i][1], medalColors[i][2]);
-        textSize(12);
-        textAlign(CENTER, CENTER);
-        text(i + 1, mx, my);
-      } else {
-        fill(120);
-        textSize(13);
-        textAlign(CENTER, CENTER);
-        text(i + 1, rightX + 16, rowY + 8);
-      }
-
-      // Données
-      textAlign(LEFT, TOP);
-      fill(255); textSize(13);
-      text(entry.score, rightX + 45, rowY + 2);
-      fill(200);
-      text(entry.level + " / 15", rightX + 110, rowY + 2);
-      text(floor(entry.time) + "s", rightX + 170, rowY + 2);
-      text(entry.stars, rightX + 230, rowY + 2);
-    }
-  }
-
-  // ===== BOUTON JOUER / REPRENDRE =====
-  let btnW = 220;
-  let btnH = 50;
-  let btnX = width / 2 - btnW / 2;
-  let btnY = panelY + panelH - 70;
-
-  // Hover effect
-  let isHover = mouseX >= btnX && mouseX <= btnX + btnW && mouseY >= btnY && mouseY <= btnY + btnH;
-  if (isHover) {
-    fill(50, 180, 100);
-    stroke(100, 255, 150);
-  } else {
-    fill(30, 140, 80);
-    stroke(60, 200, 120);
-  }
-  strokeWeight(2);
-  rect(btnX, btnY, btnW, btnH, 10);
-
-  fill(255);
-  noStroke();
-  textSize(24);
-  textAlign(CENTER, CENTER);
-  text(isResuming ? "REPRENDRE" : "JOUER", btnX + btnW / 2, btnY + btnH / 2);
-
-  pop();
-}
-
-// ============================
-//     COUNTDOWN 3 - 2 - 1
-// ============================
-function drawCountdown() {
-  push();
-
-  // Overlay sombre
-  fill(0, 0, 0, 120);
-  noStroke();
-  rect(0, 0, width, height);
-
-  countdownTimer++;
-
-  // Calculer la valeur du compteur (3, 2, 1)
-  let elapsed = countdownTimer;
-  if (elapsed <= 60) {
-    countdownValue = 3;
-  } else if (elapsed <= 120) {
-    countdownValue = 2;
-  } else if (elapsed <= 180) {
-    countdownValue = 1;
-  }
-
-  // Animation de taille (pulse à chaque seconde)
-  let phase = (elapsed % 60) / 60;
-  let sz = lerp(90, 50, phase);
-  let alpha = lerp(255, 100, phase);
-
-  fill(255, 255, 0, alpha);
-  textSize(sz);
-  textAlign(CENTER, CENTER);
-  text(countdownValue, width / 2, height / 2);
-
-  // Fin du countdown
-  if (countdownTimer >= countdownDuration) {
-    gameState = "playing";
-    countdownTimer = 0;
-  }
-
-  pop();
-}
-
-// ============================
-//           UI EN JEU
-// ============================
 function drawUI() {
   push();
   fill(255);
-  textSize(16);
-  textAlign(LEFT);
-  text("Score: " + score, 20, 30);
-  text("Temps: " + floor(timeSurvived) + "s", 20, 50);
-  text("Niveau: " + currentLevel + " / " + maxLevel, 20, 70);
-  text("Etoiles: " + starsCollected + " (Prochain: " + (currentLevel * 5) + ")", 20, 90);
+  textSize(8);
+  textAlign(LEFT, TOP);
 
-  // Mini indicateur de vies
-  for (let i = 0; i < 4; i++) {
-    let hx = 20 + i * 22;
-    let hy = 105;
-    if (i < player.lives) {
-      image(imgFullHeart, hx, hy, 18, 18);
-    } else {
-      image(imgDeadHeart, hx, hy, 18, 18);
+  // Barre de cœurs : en haut, au centre, taille doublée (7 emplacements, full ou Dead Heart)
+  if (player) {
+    let heartSize = 36;
+    let gap = 6;
+    let totalW = player.maxLives * heartSize + (player.maxLives - 1) * gap;
+    let barX = (width - totalW) / 2;
+    let barY = 14;
+    for (let i = 0; i < player.maxLives; i++) {
+      let hx = barX + i * (heartSize + gap);
+      if (i < player.lives) {
+        image(imgFullHeart, hx, barY, heartSize, heartSize);
+      } else {
+        image(imgDeadHeart, hx, barY, heartSize, heartSize);
+      }
     }
   }
 
-  // Bouton Debug Mode
-  let dbgBtnX = width - 140;
-  let dbgBtnY = 10;
-  let dbgBtnW = 120;
-  let dbgBtnH = 30;
-  fill(debugMode ? color(0, 200, 100) : color(80, 80, 80));
-  stroke(200);
+  // Bloc haut-gauche: Score, Tps, Niv, Etoiles (sans barre de cœurs ici)
+  let ux = 12;
+  let uy = 12;
+  text("Score: " + score, ux, uy);
+  uy += 14;
+  text("Tps: " + floor(timeSurvived) + "s", ux, uy);
+  uy += 14;
+  text("Niv: " + currentLevel + "/" + maxLevel, ux, uy);
+  uy += 14;
+  let starIconSize = 7;
+  if (imgStarScore && imgStarScore.width) {
+    imageMode(CENTER);
+    image(imgStarScore, ux + starIconSize / 2, uy + starIconSize / 2, starIconSize, starIconSize);
+    imageMode(CORNER);
+  }
+  text(str(starsCollected), ux + starIconSize + 6, uy);
+
+  // Boutons Pause et Debug séparés (haut-droite, style pixel)
+  let pauseW = 56;
+  let pauseH = 22;
+  let debugW = 56;
+  let debugH = 22;
+  let gap = 6;
+  let btnY = 10;
+  let pauseX = width - pauseW - debugW - gap - 14;
+  let debugX = width - debugW - 12;
+  fill(200, 60, 60);
+  stroke(255);
   strokeWeight(1);
-  rect(dbgBtnX, dbgBtnY, dbgBtnW, dbgBtnH, 5);
+  rect(pauseX, btnY, pauseW, pauseH, 0);
   fill(255);
   noStroke();
-  textSize(13);
+  textSize(6);
   textAlign(CENTER, CENTER);
-  text(debugMode ? "Debug: ON" : "Debug: OFF", dbgBtnX + dbgBtnW / 2, dbgBtnY + dbgBtnH / 2);
+  text("Pause", pauseX + pauseW / 2, btnY + pauseH / 2);
+  fill(debugMode ? color(60, 200, 100) : color(100, 100, 100));
+  stroke(debugMode ? 255 : 150);
+  strokeWeight(1);
+  rect(debugX, btnY, debugW, debugH, 0);
+  fill(255);
+  noStroke();
+  text(debugMode ? "Debug ON" : "Debug", debugX + debugW / 2, btnY + debugH / 2);
+  textAlign(LEFT, TOP);
 
-  // Game Over
   if (gameState === "gameover") {
-    fill(0, 0, 0, 150);
+    fill(0, 0, 0, 180);
     noStroke();
     rect(0, 0, width, height);
-    fill(255, 50, 50);
+    fill(255, 80, 80);
     textSize(48);
     textAlign(CENTER, CENTER);
-    text("GAME OVER", width / 2, height / 2 - 30);
+    text("GAME OVER", width / 2, height / 2 - 50);
     fill(255);
-    textSize(22);
-    text("Score: " + score + "  |  Temps: " + floor(timeSurvived) + "s", width / 2, height / 2 + 20);
-    textSize(16);
+    textSize(24);
+    text("Score: " + score + "  |  Tps: " + floor(timeSurvived) + "s", width / 2, height / 2 + 20);
+    textSize(18);
     fill(200);
-    text("Cliquez pour revenir au menu", width / 2, height / 2 + 60);
+    text("Cliquez pour recommencer", width / 2, height / 2 + 70);
   }
 
-  // Info bas d'écran
-  textAlign(LEFT);
-  textSize(13);
+  textSize(6);
   fill(180);
-  text("Souris: Deplacer  |  D: Debug  |  P: Pause", 20, height - 15);
+  textAlign(LEFT, TOP);
+  text("Souris: deplacer | Espace: snake/banc | D: Debug | P: Pause", 12, height - 14);
+  pop();
+}
+
+function drawMenu() {
+  push();
+  textAlign(LEFT, TOP);
+
+  // Rectangle central : marges partout (haut, bas, gauche, droite), tout le contenu dedans
+  let margin = max(50, min(width, height) * 0.06);
+  let maxRectW = 960;
+  let rectW = min(width - margin * 2, maxRectW);
+  let rectH = height - margin * 2;
+  let rectX = (width - rectW) / 2;
+  let rectY = margin;
+  fill(15, 25, 55, 160);
+  stroke(80, 140, 220);
+  strokeWeight(2);
+  rect(rectX, rectY, rectW, rectH, 0);
+  noStroke();
+
+  let innerPad = 24;
+  let leftPanelW = rectW * 0.52;
+  let divX = rectX + leftPanelW;
+  let xLeft = rectX + innerPad;
+  let xRight = divX + innerPad;
+  let rightPanelW = rectW - leftPanelW - innerPad * 2;
+
+  // Titre COSMIC SURVIVOR
+  fill(255, 200, 80);
+  textSize(26);
+  textAlign(CENTER, TOP);
+  text("COSMIC SURVIVOR", rectX + rectW / 2, rectY + 14);
+  textAlign(LEFT, TOP);
+  stroke(80, 140, 220);
+  strokeWeight(1);
+  line(rectX + 20, rectY + 46, rectX + rectW - 20, rectY + 46);
+  noStroke();
+
+  let y = rectY + 56;
+
+  // --- Panneau gauche (tailles de texte encore augmentées) ---
+  fill(80, 160, 255);
+  textSize(12);
+  text("Concept", xLeft, y);
+  y += 24;
+  fill(255);
+  textSize(10);
+  text("Collectez 5 etoiles/niveau. Evitez monstres et asteroides.", xLeft, y, leftPanelW - innerPad * 2, 48);
+  y += 40;
+  fill(80, 160, 255);
+  textSize(12);
+  text("Controles", xLeft, y);
+  y += 24;
+  fill(255);
+  textSize(10);
+  text("Souris: deplacer | Espace: snake/banc etoiles | D: Debug | P/Echap: Pause", xLeft, y, leftPanelW - innerPad * 2, 36);
+  y += 32;
+  fill(80, 160, 255);
+  textSize(12);
+  text("Mode", xLeft, y);
+  y += 26;
+
+  let modeLabels = ["Normal", "Facile", "Moyen", "Difficile"];
+  let modeColors = [color(120, 240, 140), color(255, 200, 80), color(255, 140, 60), color(255, 80, 80)];
+  let btnH = 32;
+  let gap = 12;
+  let availableW = leftPanelW - innerPad * 2;
+  let btnW = (availableW - gap * 3) / 4;
+  menuModeButtonBounds = [];
+  for (let i = 0; i < 4; i++) {
+    let bx = xLeft + i * (btnW + gap);
+    menuModeButtonBounds.push({ x: bx, y: y, w: btnW, h: btnH });
+    let sel = difficultyMode === modeLabels[i].toLowerCase();
+    fill(modeColors[i]);
+    if (sel) stroke(255); else stroke(100);
+    strokeWeight(1);
+    rect(bx, y, btnW, btnH, 0);
+    fill(0);
+    noStroke();
+    textSize(10);
+    textAlign(CENTER, CENTER);
+    text(modeLabels[i], bx + btnW / 2, y + btnH / 2);
+    textAlign(LEFT, TOP);
+  }
+  y += btnH + 20;
+
+  let monsterInfos = getModeMonsterDescription(difficultyMode);
+  let iconSize = 28;
+  let heartSize = 16;
+  for (let i = 0; i < monsterInfos.length; i++) {
+    let m = monsterInfos[i];
+    fill(255, 100, 100);
+    textSize(10);
+    text(m.name + " (Niv. " + m.nivRange + ")", xLeft, y + 2);
+    let img = m.img;
+    if (img && img.width) {
+      imageMode(CORNER);
+      image(img, xLeft, y + 18, iconSize, iconSize);
+    }
+    let heartX = xLeft + iconSize + 10;
+    imageMode(CORNER);
+    for (let h = 0; h < m.hearts; h++) {
+      if (imgFullHeart && imgFullHeart.width) {
+        image(imgFullHeart, heartX + h * (heartSize + 2), y + 16, heartSize, heartSize);
+      } else {
+        fill(255, 80, 80);
+        noStroke();
+        rect(heartX + h * (heartSize + 2), y + 16, heartSize, heartSize);
+      }
+    }
+    fill(255);
+    textSize(9);
+    text(m.desc, xLeft + iconSize + 10 + m.hearts * (heartSize + 2) + 8, y + 18, leftPanelW - iconSize - 80, 32);
+    y += 46;
+  }
+  y += 12;
+  fill(80, 160, 255);
+  textSize(12);
+  text("Progression", xLeft, y);
+  y += 24;
+  fill(255);
+  textSize(10);
+  text("20 niveaux | 5 etoiles/niveau | +1 ennemi | Vie + Boucliers", xLeft, y, leftPanelW - innerPad * 2, 40);
+
+  stroke(80, 140, 220);
+  strokeWeight(1);
+  let botPad = 70;
+  line(divX, rectY + 44, divX, rectY + rectH - botPad);
+  noStroke();
+
+  // --- Panneau droit: Meilleurs Scores (médailles 1-2-3, puis nombres 4-10, trait sous en-têtes) ---
+  y = rectY + 56;
+  fill(255, 180, 80);
+  textSize(12);
+  textAlign(CENTER, TOP);
+  text("Meilleurs Scores", xRight + rightPanelW / 2, y);
+  textAlign(LEFT, TOP);
+  y += 30;
+  let numCols = 6;
+  let colW = rightPanelW / numCols;
+  let colX = [0, 1, 2, 3, 4, 5].map(function (i) { return xRight + i * colW + 6; });
+  fill(255, 180, 80);
+  textSize(10);
+  text("#", colX[0], y);
+  text("Score", colX[1], y);
+  text("Niv.", colX[2], y);
+  text("Tps", colX[3], y);
+  text("Eto.", colX[4], y);
+  text("Mode", colX[5], y);
+  y += 20;
+  stroke(80, 140, 220);
+  strokeWeight(1);
+  line(xRight, y + 4, xRight + rightPanelW, y + 4);
+  noStroke();
+  y += 14;
+  let scores = getBestScores();
+  let medalColors = [color(255, 215, 0), color(192, 192, 192), color(205, 127, 50)];
+  let medalRadius = 11;
+  let rankCenterX = colX[0] + colW / 2 - 6;
+  for (let i = 0; i < min(10, scores.length); i++) {
+    let r = scores[i];
+    let rowMidY = y + 14;
+    if (i < 3) {
+      fill(medalColors[i]);
+      noStroke();
+      circle(rankCenterX, rowMidY, medalRadius * 2);
+      fill(0);
+      textSize(9);
+      textAlign(CENTER, CENTER);
+      text(str(i + 1), rankCenterX, rowMidY);
+      textAlign(LEFT, TOP);
+    } else {
+      fill(255);
+      textSize(10);
+      textAlign(CENTER, TOP);
+      text(str(i + 1), rankCenterX, y + 5);
+      textAlign(LEFT, TOP);
+    }
+    fill(255);
+    textSize(10);
+    text(str(r.score != null ? r.score : 0), colX[1], y + 5);
+    text(str(r.niv != null ? r.niv : 0) + "/20", colX[2], y + 5);
+    text(str(r.time != null ? r.time : 0) + "s", colX[3], y + 5);
+    text(str(r.etoiles != null ? r.etoiles : 0), colX[4], y + 5);
+    text((r.mode || "Normal").substring(0, 8), colX[5], y + 5);
+    y += 28;
+  }
+
+  let playLabel = (score > 0 || timeSurvived > 0 || currentLevel > 1) ? "REPRENDRE" : "JOUER";
+  let playW = 200;
+  let playH = 48;
+  let playX = rectX + (rectW - playW) / 2;
+  let playY = rectY + rectH - playH - 20;
+  menuPlayButtonBounds = { x: playX, y: playY, w: playW, h: playH };
+  fill(60, 200, 100);
+  stroke(180, 255, 180);
+  strokeWeight(1);
+  rect(playX, playY, playW, playH, 0);
+  fill(255);
+  noStroke();
+  textSize(14);
+  textAlign(CENTER, CENTER);
+  text(playLabel, playX + playW / 2, playY + playH / 2);
+  textAlign(LEFT, TOP);
 
   pop();
+}
+
+function getModeMonsterDescription(mode) {
+  let list = [];
+  if (mode === "normal") {
+    list = [
+      { name: "Monstre 0", nivRange: "0-4", img: imgMonster0, hearts: 1, desc: "Lent mais vigilant. Vision: 300px." },
+      { name: "Monstre 1", nivRange: "5-9", img: imgMonster1, hearts: 2, desc: "Rapide et dangereux. Vision: 200px." },
+      { name: "Monstre Max", nivRange: "10-14", img: imgMonsterMax, hearts: 3, desc: "Mortel mais myope. Vision: 130px." },
+      { name: "Serpent", nivRange: "15-19", img: imgMonsterSnake, hearts: 4, desc: "Boss mortel au contact. Vision: 20px." }
+    ];
+  } else if (mode === "facile") {
+    list = [
+      { name: "Monstre 0", nivRange: "0-19", img: imgMonster0, hearts: 1, desc: "Lent mais vigilant. Vision: 300px." }
+    ];
+  } else if (mode === "moyen") {
+    list = [
+      { name: "Monstre 1", nivRange: "0-9", img: imgMonster1, hearts: 2, desc: "Rapide et dangereux. Vision: 200px." },
+      { name: "Monstre Max", nivRange: "10-19", img: imgMonsterMax, hearts: 3, desc: "Mortel mais myope. Vision: 130px." }
+    ];
+  } else {
+    list = [
+      { name: "Monstre Max", nivRange: "0-9", img: imgMonsterMax, hearts: 3, desc: "Mortel mais myope. Vision: 130px." },
+      { name: "Serpent", nivRange: "10-19", img: imgMonsterSnake, hearts: 4, desc: "Boss mortel au contact. Vision: 20px." }
+    ];
+  }
+  return list;
 }
 
 function drawLevelUpScreen() {
   push();
-  fill(0, 0, 0, 120);
+  fill(0, 0, 0, 140);
   noStroke();
   rect(0, 0, width, height);
-
   let blink = sin(levelUpTimer * 0.2) > 0;
   if (blink) {
     fill(255, 255, 0);
-    textSize(64);
+    textSize(36);
     textAlign(CENTER, CENTER);
-    text("NIVEAU " + currentLevel, width / 2, height / 2 - 30);
+    text("NIVEAU " + currentLevel, width / 2, height / 2 - 40);
   }
-
   if (levelUpTimer > 60) {
     fill(255);
     textSize(24);
     textAlign(CENTER, CENTER);
-    text("C'est parti, on continue !", width / 2, height / 2 + 40);
+    text("C'est parti, on continue !", width / 2, height / 2 + 50);
   }
+  pop();
+}
+
+function drawCountdownScreen() {
+  push();
+  fill(0, 0, 0, 120);
+  noStroke();
+  rect(0, 0, width, height);
+  fill(255, 255, 0);
+  textSize(14);
+  textAlign(CENTER, CENTER);
+  text(countdownNumber > 0 ? str(countdownNumber) : "GO!", width / 2, height / 2);
   pop();
 }
 
 function drawVictoryScreen() {
   push();
-  fill(0, 0, 0, min(victoryTimer * 2, 180));
+  fill(0, 0, 0, min(victoryTimer * 2, 200));
   noStroke();
   rect(0, 0, width, height);
-
   if (victoryTimer > 60) {
     fill(255, 215, 0);
-    textSize(64);
+    textSize(42);
     textAlign(CENTER, CENTER);
-    text("BRAVO !", width / 2, height / 2 - 40);
+    text("BRAVO !", width / 2, height / 2 - 50);
     fill(255);
     textSize(24);
-    text("Vous avez conquis les 15 niveaux !", width / 2, height / 2 + 20);
+    text("Vous avez conquis les 20 niveaux !", width / 2, height / 2 + 20);
     text("Score: " + score + "  |  Temps: " + floor(timeSurvived) + "s", width / 2, height / 2 + 60);
-    textSize(16);
+    textSize(18);
     fill(200);
     text("Cliquez pour revenir au menu", width / 2, height / 2 + 100);
   }
@@ -797,125 +849,184 @@ function drawDebugOverlay() {
   stroke(255, 255, 0, 80);
   strokeWeight(1);
   rect(50, 50, width - 100, height - 100);
-
   fill(255, 255, 0, 120);
   noStroke();
-  textSize(10);
+  textSize(6);
   textAlign(LEFT);
-  text("Boundaries (50px)", 55, 45);
-
-  fill(0, 200, 100, 180);
-  textSize(11);
-  text("FPS: " + floor(frameRate()), width - 140, 55);
-  text("Obstacles: " + obstacles.length, width - 140, 70);
-  text("Hunters: " + hunters.length, width - 140, 85);
-  text("Checkpoints: " + checkpoints.length, width - 140, 100);
+  text("B. Radius (50px)", 55, 44);
+  let debugX = width - 68;
+  let debugY = 38;
+  fill(0, 255, 120, 200);
+  textSize(6);
+  text("FPS: " + floor(frameRate()), debugX, debugY);
+  text("Obstacles: " + obstacles.length, debugX, debugY + 12);
+  text("Hunters: " + hunters.length, debugX, debugY + 24);
+  text("Checkpoints: " + checkpoints.length, debugX, debugY + 36);
   pop();
 }
 
-// ============================
-//    SAUVEGARDE DES SCORES
-// ============================
+function getBestScores() {
+  try {
+    let raw = localStorage.getItem("cosmicSurvivorBestScores");
+    if (!raw) return [];
+    return JSON.parse(raw);
+  } catch (e) { return []; }
+}
+
 function saveScore() {
-  // Ne sauvegarder que si le joueur a fait quelque chose
-  if (score <= 0 && starsCollected <= 0) return;
-
-  scoreHistory.push({
+  let list = getBestScores();
+  list.push({
+    mode: difficultyMode,
     score: score,
-    level: currentLevel,
-    stars: starsCollected,
-    time: timeSurvived
+    time: floor(timeSurvived),
+    niv: currentLevel,
+    etoiles: starsCollected
   });
-
-  // Trier par score décroissant et garder le top 5
-  scoreHistory.sort((a, b) => b.score - a.score);
-  if (scoreHistory.length > 5) {
-    scoreHistory = scoreHistory.slice(0, 5);
-  }
+  list.sort((a, b) => (b.score - a.score));
+  list = list.slice(0, 10);
+  try {
+    localStorage.setItem("cosmicSurvivorBestScores", JSON.stringify(list));
+  } catch (e) {}
 }
 
-// ============================
-//       ÉVÉNEMENTS CLAVIER
-// ============================
-function keyPressed() {
-  // Toggle debug mode
-  if (key === 'd' || key === 'D') {
-    debugMode = !debugMode;
-  }
-
-  // Pause : retour au menu
-  if (key === 'p' || key === 'P' || keyCode === ESCAPE) {
-    if (gameState === "playing") {
-      gameState = "menu";
-      isResuming = true;
-    }
-  }
+function initAudio() {
+  if (audioCtx) return;
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    bgGain = audioCtx.createGain();
+    bgGain.gain.value = 0.25;
+    bgGain.connect(audioCtx.destination);
+    sfxGain = audioCtx.createGain();
+    sfxGain.gain.value = 0.4;
+    sfxGain.connect(audioCtx.destination);
+  } catch (e) {}
 }
 
-// ============================
-//       ÉVÉNEMENTS SOURIS
-// ============================
-function mousePressed() {
-  // === MENU : clic sur le bouton Jouer/Reprendre ===
-  if (gameState === "menu") {
-    let panelW = min(width - 60, 1100);
-    let panelH = min(height - 60, 700);
-    let panelX = (width - panelW) / 2;
-    let panelY = (height - panelH) / 2;
+function startBgMusic() {
+  if (!audioCtx || !bgGain) return;
+  try {
+    let osc1 = audioCtx.createOscillator();
+    osc1.type = "sine";
+    osc1.frequency.setValueAtTime(523.25, audioCtx.currentTime);
+    osc1.frequency.setValueAtTime(659.25, audioCtx.currentTime + 0.5);
+    osc1.frequency.setValueAtTime(783.99, audioCtx.currentTime + 1);
+    osc1.connect(bgGain);
+    osc1.start(audioCtx.currentTime);
+    osc1.stop(audioCtx.currentTime + 1.5);
+  } catch (e) {}
+}
 
-    let btnW = 220;
-    let btnH = 50;
-    let btnX = width / 2 - btnW / 2;
-    let btnY = panelY + panelH - 70;
-
-    if (mouseX >= btnX && mouseX <= btnX + btnW && mouseY >= btnY && mouseY <= btnY + btnH) {
-      if (isResuming) {
-        // Reprendre la partie en cours avec countdown
-        gameState = "countdown";
-        countdownTimer = 0;
-      } else {
-        // Nouvelle partie
-        initGame();
-        gameState = "countdown";
-        countdownTimer = 0;
-      }
-      return;
-    }
-    return; // Ignorer les clics ailleurs dans le menu
-  }
-
-  // === COUNTDOWN : ignorer les clics ===
-  if (gameState === "countdown") return;
-
-  // === Toggle debug via le bouton ===
-  let dbgBtnX = width - 140;
-  let dbgBtnY = 10;
-  let dbgBtnW = 120;
-  let dbgBtnH = 30;
-  if (mouseX >= dbgBtnX && mouseX <= dbgBtnX + dbgBtnW && mouseY >= dbgBtnY && mouseY <= dbgBtnY + dbgBtnH) {
-    debugMode = !debugMode;
-    return;
-  }
-
-  // === Game Over / Victory : retour au menu ===
-  if (gameState === "gameover" || gameState === "victory") {
-    gameState = "menu";
-    isResuming = false;
-  }
+function playSfx(name) {
+  if (!audioCtx || !sfxGain) return;
+  try {
+    let osc = audioCtx.createOscillator();
+    let gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(sfxGain);
+    gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+    if (name === "collect") { osc.frequency.setValueAtTime(880, audioCtx.currentTime); osc.type = "sine"; }
+    else if (name === "damage") { osc.frequency.setValueAtTime(150, audioCtx.currentTime); osc.type = "sawtooth"; }
+    else if (name === "levelup") { osc.frequency.setValueAtTime(600, audioCtx.currentTime); osc.type = "sine"; }
+    else if (name === "victory") { osc.frequency.setValueAtTime(800, audioCtx.currentTime); osc.type = "sine"; }
+    else if (name === "gameover") { osc.frequency.setValueAtTime(120, audioCtx.currentTime); osc.type = "sawtooth"; }
+    else return;
+    osc.start(audioCtx.currentTime);
+    osc.stop(audioCtx.currentTime + 0.15);
+  } catch (e) {}
 }
 
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
+  // Régénérer les étoiles pour la nouvelle taille
   generateStars();
-  if (gameState !== "menu" || isResuming) {
-    createCheckpoints();
-    createObstacles();
+  // Recréer les éléments pour s'adapter à la nouvelle taille
+  createCheckpoints();
+  createObstacles();
+}
+
+function keyPressed() {
+  if (key === " ") {
+    if (player && player.starFollowMode !== undefined) {
+      player.starFollowMode = player.starFollowMode === "snake" ? "flock" : "snake";
+    }
+    return false;
+  }
+  if (key === "p" || key === "P" || keyCode === ESCAPE) {
+    if (gameState === "playing") {
+      gameState = "menu";
+      if (audioCtx) try { bgGain && bgGain.gain.setValueAtTime(0, audioCtx.currentTime); } catch (e) {}
+    }
+    return false;
+  }
+  if (key === "e" || key === "E") {
+    for (let hunter of hunters) hunter.activateEvade(300);
+  }
+  if (key === "d" || key === "D") debugMode = !debugMode;
+  return false;
+}
+
+function mousePressed() {
+  let pauseW = 56, pauseH = 22, debugW = 56, debugH = 22, gap = 6, btnY = 10;
+  let pauseX = width - pauseW - debugW - gap - 14;
+  let debugX = width - debugW - 12;
+  if (mouseX >= pauseX && mouseX <= pauseX + pauseW && mouseY >= btnY && mouseY <= btnY + pauseH) {
+    if (gameState === "playing") {
+      gameState = "menu";
+      if (audioCtx && bgGain) try { bgGain.gain.setValueAtTime(0, audioCtx.currentTime); } catch (e) {}
+    }
+    return;
+  }
+  if (mouseX >= debugX && mouseX <= debugX + debugW && mouseY >= btnY && mouseY <= btnY + debugH) {
+    debugMode = !debugMode;
+    return;
+  }
+
+  if (gameState === "menu") {
+    for (let i = 0; i < menuModeButtonBounds.length; i++) {
+      let b = menuModeButtonBounds[i];
+      if (mouseX >= b.x && mouseX <= b.x + b.w && mouseY >= b.y && mouseY <= b.y + b.h) {
+        difficultyMode = ["normal", "facile", "moyen", "difficile"][i];
+        return;
+      }
+    }
+    if (menuPlayButtonBounds && mouseX >= menuPlayButtonBounds.x && mouseX <= menuPlayButtonBounds.x + menuPlayButtonBounds.w && mouseY >= menuPlayButtonBounds.y && mouseY <= menuPlayButtonBounds.y + menuPlayButtonBounds.h) {
+      initAudio();
+      let isResume = score > 0 || timeSurvived > 0 || currentLevel > 0;
+      if (!isResume) {
+        score = 0;
+        timeSurvived = 0;
+        starsCollected = 0;
+        currentLevel = 0;
+        nbHunters = 1;
+        collectables = [];
+        particles = [];
+        setup();
+      }
+      gameState = "countdown";
+      countdownNumber = 3;
+      countdownTimer = 0;
+      return;
+    }
+    return;
+  }
+
+  if (gameState === "gameover" || gameState === "victory") {
+    saveScore();
+    score = 0;
+    timeSurvived = 0;
+    starsCollected = 0;
+    currentLevel = 0;
+    nbHunters = 1;
+    collectables = [];
+    particles = [];
+    setup();
+    gameState = "menu";
   }
 }
 
-// ============================
-//    SYSTÈME DE PARTICULES
-// ============================
+
+// Système de particules pour effets visuels
 class Particle {
   constructor(x, y, color) {
     this.pos = createVector(x, y);
@@ -925,13 +1036,13 @@ class Particle {
     this.color = color;
     this.size = random(3, 8);
   }
-
+  
   update() {
     this.pos.add(this.vel);
-    this.vel.mult(0.95);
+    this.vel.mult(0.95); // Friction
     this.lifetime--;
   }
-
+  
   display() {
     push();
     let alpha = map(this.lifetime, 0, this.maxLifetime, 0, 255);
@@ -940,7 +1051,7 @@ class Particle {
     circle(this.pos.x, this.pos.y, this.size);
     pop();
   }
-
+  
   isDead() {
     return this.lifetime <= 0;
   }
@@ -958,16 +1069,14 @@ function createImpactParticles(x, y) {
   }
 }
 
-// ============================
-//    CLASSE COLLECTABLE
-// ============================
+// Classe pour les collectables (bouclier et cœur) - utilise les images Assets
 class Collectable {
   constructor(x, y, type) {
     this.pos = createVector(x, y);
     this.r = 25;
-    this.type = type;
+    this.type = type; // "heart" ou "shield"
     this.pulse = 0;
-    this.lifetime = 600;
+    this.lifetime = 600; // Disparaît après 10 secondes
   }
 
   update() {
@@ -977,14 +1086,14 @@ class Collectable {
 
   display() {
     if (this.lifetime <= 0) return;
-
+    
     push();
     translate(this.pos.x, this.pos.y);
-
+    
     let pulseSize = this.r + sin(this.pulse) * 4;
     let alpha = map(this.lifetime, 0, 200, 0, 255, true);
     tint(255, alpha);
-
+    
     imageMode(CENTER);
     if (this.type === "heart") {
       image(imgFullHeart, 0, 0, pulseSize * 2, pulseSize * 2);
@@ -993,7 +1102,7 @@ class Collectable {
     }
     imageMode(CORNER);
     noTint();
-
+    
     pop();
   }
 

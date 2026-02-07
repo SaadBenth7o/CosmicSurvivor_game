@@ -1,38 +1,43 @@
 // HunterVehicle - Ennemis qui poursuivent le joueur
-// 3 types de monstres selon le niveau : monster0 (1dmg), monster1 (2dmg), monsterMax (3dmg)
+// Types 0,1,2,3 (serpent). perceptionRadius optionnel en 6e argument.
 class HunterVehicle extends Vehicle {
-  constructor(x, y, monsterType = 0, monsterImg = null, damage = 1) {
+  constructor(x, y, monsterType = 0, monsterImg = null, damage = 1, perceptionRadius = null) {
     super(x, y);
-    this.monsterType = monsterType; // 0, 1, 2
-    this.monsterImg = monsterImg;   // Image p5.Image
-    this.damage = damage;           // Dégâts : 1, 2 ou 3 cœurs
+    this.monsterType = monsterType;
+    this.monsterImg = monsterImg;
+    this.damage = damage;
+    this.evadeMode = false;
+    this.evadeTime = 0;
     this.perceptionRadius = 200;
-    
-    // Stats selon le type de monstre
-    // Plus les dégâts sont élevés, plus le rayon de vision est petit (équité)
+
     if (monsterType === 0) {
       this.maxSpeed = 4.5;
       this.maxForce = 0.2;
       this.r = 18;
-      this.perceptionRadius = 300; // Grande vision, faible dégâts
+      this.perceptionRadius = perceptionRadius != null ? perceptionRadius : 300;
     } else if (monsterType === 1) {
       this.maxSpeed = 5;
       this.maxForce = 0.28;
       this.r = 22;
-      this.perceptionRadius = 200; // Vision moyenne, dégâts moyens
-    } else {
+      this.perceptionRadius = perceptionRadius != null ? perceptionRadius : 200;
+    } else if (monsterType === 2) {
       this.maxSpeed = 5.5;
       this.maxForce = 0.35;
       this.r = 26;
-      this.perceptionRadius = 130; // Petite vision, gros dégâts
+      this.perceptionRadius = perceptionRadius != null ? perceptionRadius : 130;
+    } else {
+      this.maxSpeed = 6;
+      this.maxForce = 0.4;
+      this.r = 28;
+      this.perceptionRadius = perceptionRadius != null ? perceptionRadius : 20;
     }
-    
-    // Donner une vitesse initiale pour démarrer
+
     this.vel = p5.Vector.random2D();
     this.vel.setMag(this.maxSpeed * 0.3);
   }
 
   // Override applyBehaviors : combine toutes les forces de steering avec poids
+  // Chaque comportement retourne une force ; on combine avec des poids
   applyBehaviors(world) {
     let force = createVector(0, 0);
 
@@ -50,24 +55,37 @@ class HunterVehicle extends Vehicle {
       force.add(separateForce);
     }
 
-    // 3. Comportement principal : PURSUE ou WANDER
-    if (world.player) {
-      let distToPlayer = p5.Vector.dist(this.pos, world.player.pos);
-      if (distToPlayer < this.perceptionRadius) {
-        // PURSUE le joueur (pursue() de Vehicle)
-        let pursueForce = this.pursue(world.player);
-        pursueForce.mult(1.5);
-        force.add(pursueForce);
+    // 3. Comportement principal : PURSUE / EVADE / WANDER
+    if (this.evadeMode) {
+      // EVADE le joueur (evade() de Vehicle)
+      if (world.player) {
+        let evadeForce = this.evade(world.player);
+        evadeForce.mult(2.0);
+        force.add(evadeForce);
+      }
+      this.evadeTime--;
+      if (this.evadeTime <= 0) {
+        this.evadeMode = false;
+      }
+    } else {
+      if (world.player) {
+        let distToPlayer = p5.Vector.dist(this.pos, world.player.pos);
+        if (distToPlayer < this.perceptionRadius) {
+          // PURSUE le joueur (pursue() de Vehicle)
+          let pursueForce = this.pursue(world.player);
+          pursueForce.mult(1.5);
+          force.add(pursueForce);
+        } else {
+          // WANDER si le joueur est hors de portée (wander() de Vehicle)
+          let wanderForce = this.wander();
+          wanderForce.mult(0.5);
+          force.add(wanderForce);
+        }
       } else {
-        // WANDER si le joueur est hors de portée (wander() de Vehicle)
         let wanderForce = this.wander();
         wanderForce.mult(0.5);
         force.add(wanderForce);
       }
-    } else {
-      let wanderForce = this.wander();
-      wanderForce.mult(0.5);
-      force.add(wanderForce);
     }
 
     // 4. BOUNDARIES : force de répulsion aux bords (boundaries() de Vehicle)
@@ -76,6 +94,11 @@ class HunterVehicle extends Vehicle {
     force.add(boundariesForce);
 
     this.applyForce(force);
+  }
+
+  activateEvade(duration = 300) {
+    this.evadeMode = true;
+    this.evadeTime = duration;
   }
 
   show() {
@@ -101,6 +124,13 @@ class HunterVehicle extends Vehicle {
       fill(c[0], c[1], c[2]);
       strokeWeight(2);
       triangle(-this.r, -this.r / 2, -this.r, this.r / 2, this.r, 0);
+    }
+    
+    // Cercle de perception en evade mode
+    if (this.evadeMode) {
+      noFill();
+      stroke(255, 100, 100, 50);
+      circle(0, 0, this.perceptionRadius * 2);
     }
     pop();
   }

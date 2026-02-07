@@ -1,77 +1,11 @@
-# Project Rules — Cosmic Survivor (11)
+# Règles du projet Cosmic Survivor
 
-## 1. Base Class: NEVER Modify
-
-- The file `vehicle.js` contains the base class `Vehicle`.
-- **DO NOT modify `vehicle.js` under any circumstance.**
-- All steering behavior methods are defined there: `seek`, `flee`, `arrive`, `pursue`, `evade`, `wander`, `avoidObstacles`, `separate`, `boundaries`, `edges`.
-- All properties are defined there: `pos`, `vel`, `acc`, `maxSpeed`, `maxForce`, `r`, `color`.
-
-## 2. Extend Via Subclasses Only
-
-- To add new entity types, **create a subclass** that extends `Vehicle` in the `vehicles/` folder.
-- Every subclass **must override** these three methods:
-  - `applyBehaviors(world)` — compose steering forces with weights.
-  - `show()` — custom visual rendering.
-  - `update()` — call `super.update()` plus any additional logic.
-- Existing subclasses:
-  - `vehicles/playerVehicle.js` → `PlayerVehicle`, `HeartSegment`
-  - `vehicles/hunterVehicle.js` → `HunterVehicle`
-  - `vehicles/obstacleVehicle.js` → `ObstacleVehicle`
-
-## 3. Steering Behaviors: Composable Forces
-
-- Each behavior method (e.g., `this.seek(target)`) **returns a force vector**. It does NOT apply it directly.
-- Inside `applyBehaviors(world)`:
-  1. Call behavior methods to get force vectors.
-  2. Multiply each force by a **weight** (e.g., `force.mult(2.0)`).
-  3. Sum all weighted forces into a single combined force.
-  4. Apply the combined force via `this.applyForce(combinedForce)`.
-- Forces are automatically clamped by `maxForce` (per behavior) and `maxSpeed` (in `update()`).
-
-```javascript
-// CORRECT pattern:
-applyBehaviors(world) {
-  let force = createVector(0, 0);
-  let seekForce = this.seek(target);
-  seekForce.mult(1.5);
-  force.add(seekForce);
-  let boundaryForce = this.boundaries();
-  boundaryForce.mult(3.0);
-  force.add(boundaryForce);
-  this.applyForce(force);
-}
-```
-
-## 4. Available Steering Behaviors (from Vehicle)
-
-| Method | Returns | Description |
-|--------|---------|-------------|
-| `seek(target)` | Force vector | Steer toward a position at full speed |
-| `flee(target)` | Force vector | Steer away from a position (inverse of seek) |
-| `arrive(target, slowRadius)` | Force vector | Steer toward a position, slowing down within slowRadius |
-| `pursue(targetVehicle)` | Force vector | Seek the predicted future position of a moving target |
-| `evade(targetVehicle)` | Force vector | Flee from the predicted future position of a moving target |
-| `wander()` | Force vector | Random smooth movement using a projected circle |
-| `avoidObstacles(obstacles)` | Force vector | Steer away from the nearest obstacle ahead |
-| `separate(vehicles, radius)` | Force vector | Keep distance from nearby vehicles |
-| `boundaries()` | Force vector | Repulsion force when near screen edges (50px margin) |
-
-## 5. Assets
-
-- All image assets are in the `Assets/` folder.
-- Images are loaded in `preload()` using `loadImage()` — they are available as global `p5.Image` variables.
-- Pass loaded `p5.Image` objects (not file path strings) to constructors.
-
-## 6. Code Style
-
-- Use clear, descriptive French or English names for variables and comments.
-- Keep methods small and focused — one responsibility per method.
-- Comments should explain **why**, not **what**.
-- No unused variables, no dead code, no orphan files.
-
-## 7. Game Architecture
-
-- `sketch.js` is the main entry point: `preload()`, `setup()`, `draw()`, UI functions, helper classes (`Particle`, `Collectable`).
-- Game state is managed via the global `gameState` variable: `"menu"`, `"countdown"`, `"playing"`, `"gameover"`, `"levelup"`, `"victory"`.
-- The `world` object is passed to all `applyBehaviors()` calls and contains: `player`, `hunters`, `obstacles`, `checkpoints`, `allVehicles`, `debugMode`.
+- **Règle 1 — Base :** Le fichier **`vehicle.js`** n'est **jamais modifié**. Il contient la classe `Vehicle` et toutes les méthodes de steering (seek, flee, arrive, pursue, evade, wander, avoidObstacles, separate, boundaries, edges).
+- **Règle 2 — Sous-classes :** Toutes les entités sont des **sous-classes** dans `vehicles/` : `PlayerVehicle`, `HeartSegment`, `StarSegment`, `HunterVehicle`, `ObstacleVehicle`. Chacune surcharge `applyBehaviors(world)`, `show()`, `update()` si nécessaire.
+- **Règle 3 — Forces composables :** Chaque comportement **retourne** un vecteur force. Dans `applyBehaviors(world)` : appeler les comportements, multiplier chaque force par un **poids**, sommer, puis appliquer une seule fois avec `applyForce()`. Les forces sont bornées par `maxForce` et `maxSpeed`.
+- **Règle 4 — Cœurs :** 5 cœurs par défaut, 7 max. Barre de cœurs **centrée en haut**. Cœurs perdus affichés en **noir**. Méthode `addHeart()` dans `PlayerVehicle` pour les bonus.
+- **Règle 5 — Étoiles à la suite :** Nombre d’étoiles = `starsCollected` (0 au départ, jusqu’à 100 au niveau 20). Sous-classe `StarSegment` dans `vehicles/`. Touche **Espace** alterne mode **snake** (chaîne arrive) / **banc** (arrive + separate + align + cohesion).
+- **Règle 6 — Menu et difficulté :** 4 boutons (Normal, Facile, Moyen, Difficile), légende « Mode », description des monstres. Pas de bouton Valider : le mode est validé en cliquant **JOUER**.
+- **Règle 7 — Architecture :** `sketch.js` = entrée principale (preload, setup, draw, UI, Particle, Collectable). États de jeu : `"menu"`, `"countdown"`, `"playing"`, `"gameover"`, `"levelup"`, `"victory"`. L’objet **`world`** (player, hunters, obstacles, checkpoints, allVehicles, debugMode, starsCollected) est passé à tous les `applyBehaviors(world)`.
+- **Règle 8 — Sons :** Web Audio API ; son de dégâts **uniquement** quand le joueur n’est pas invulnérable.
+- **Règle 9 — Scores :** Tableau des meilleurs scores avec une colonne **Mode**.

@@ -1,169 +1,205 @@
 # 11 - Cosmic Survivor
 
+## Captures d’écran — écrans à fournir
+
+Pour que les images s’affichent correctement dans le README, placez les captures dans le dossier **`screens/`** avec **exactement** les noms suivants (double sens : nom descriptif + nom de fichier) :
+
+| Nom du fichier | Description |
+|----------------|-------------|
+| **`Home.png`** | Page d’accueil : menu, 4 modes, tableau des scores, bouton JOUER/REPRENDRE. |
+| **`Game.png`** | Partie en cours : joueur, étoiles, monstres, barre de cœurs, score/temps/niveau. |
+| **`debug.png`** | Même écran avec mode Debug (D) : boundaries, FPS, cercles de perception, vecteurs. |
+| **`Bravo.png`** | Écran de victoire après les 20 niveaux (message BRAVO !, score, temps). |
+
+*(Évitez les caractères spéciaux dans les noms de fichiers pour simplifier.)*
+
+---
+
+## Captures d’écran (affichage)
+
+### Page d’accueil (Rampage)
+
+Écran principal au lancement du jeu : choix du **mode** (Normal, Facile, Moyen, Difficile), description des monstres selon le mode, tableau des **meilleurs scores** avec la colonne Mode, et bouton **JOUER** / **REPRENDRE** pour lancer ou reprendre une partie.
+
+![Page d'accueil](screens/Home.png)
+
+---
+
+### Écran de jeu (Game)
+
+En partie : le joueur se déplace à la souris, collecte les **étoiles** (checkpoints) pour avancer ; les étoiles collectées le suivent (snake ou banc, touche **Espace**). Il évite les **monstres** (poursuite / wander) et les **obstacles** mobiles. En haut : barre de cœurs centrée ; en haut à gauche : score, temps, niveau, étoiles. Le déplacement et l’IA utilisent uniquement les **comportements de steering** (arrive, pursue, wander, avoidObstacles, separate, boundaries).
+
+![Écran de jeu](screens/Game.png)
+
+---
+
+### Écran de jeu en mode Debug
+
+Même écran avec le **mode Debug** activé (touche **D** ou bouton Debug). Permet de visualiser les éléments techniques du cours :
+
+| Élément | Description |
+|--------|-------------|
+| **Rectangle jaune** | Zone des **boundaries** (marge 50 px) : force de répulsion près des bords. |
+| **FPS + compteurs** | En haut à droite : FPS, nombre d’obstacles, de chasseurs, de checkpoints. |
+| **Joueur** | Cercle cyan (collision), point rouge = **tête** (zone de dégâts), vecteur vélocité (cyan), ligne vers la souris (cible **arrive**), segments des **étoiles** qui suivent (snake ou banc). |
+| **Monstres** | Cercle rouge = **rayon de perception** (pursue si joueur dedans, sinon wander), cercle de collision, vecteur vélocité, ligne vers le joueur quand en poursuite. Label type/dégâts (T0 D1, etc.). |
+| **Obstacles** | Cercle orange (collision), vecteur vélocité (vert), cercle rouge léger = zone de **séparation**. |
+
+Le mode Debug illustre concrètement les comportements de steering (arrive, pursue, wander, separate, boundaries) et les zones de détection.
+
+![Écran de jeu — mode Debug](screens/debug.png)
+
+---
+
+### Écran Victoire (Bravo !)
+
+Après avoir conquis les **20 niveaux** : message **« BRAVO ! »**, récapitulatif (score, temps), et invitation à cliquer pour revenir au menu. La barre de cœurs reste affichée en haut au centre, le score/temps en haut à gauche.
+
+![Écran Victoire — Bravo !](screens/Bravo.png)
+
+---
+
+## Objectif du projet (conformité au cours)
+
+Ce projet a pour but premier de **respecter les consignes du cours** et d’appliquer les **concepts de comportements de steering (Craig Reynolds)** vus dans les projets 1 à 10. Le jeu est un support pour illustrer ces concepts : toutes les entités (joueur, monstres, obstacles, segments d’étoiles) sont des **sous-classes de `Vehicle`** et utilisent uniquement les **méthodes de steering** définies dans la classe de base **sans jamais modifier `vehicle.js`**.
+
+---
+
 ## Concept du jeu
 
-**Cosmic Survivor** est un jeu de survie spatial en vue du dessus (top-down) developpe avec **p5.js**. Le joueur controle un personnage volant dans l'espace, collecte des etoiles pour progresser a travers **15 niveaux**, evite des monstres de plus en plus dangereux, et navigue a travers un champ d'obstacles mobiles.
-
-Le jeu repose entierement sur les **comportements de steering de Craig Reynolds** : chaque entite (joueur, monstres, obstacles) utilise des forces de pilotage composables (seek, flee, arrive, pursue, evade, wander, separation, avoidObstacles, boundaries) pour se deplacer de maniere autonome et realiste.
+**Cosmic Survivor** est un jeu de survie spatial en vue du dessus (top-down) développé avec **p5.js**. Le joueur contrôle un personnage dans l’espace, collecte des étoiles pour progresser à travers **20 niveaux**, évite des monstres et navigue parmi des obstacles mobiles. Le déplacement et l’IA reposent entièrement sur les **comportements de steering** : seek, flee, arrive, pursue, wander, avoidObstacles, separate, boundaries.
 
 ---
 
 ## Comment jouer
 
-| Controle | Action |
+| Contrôle | Action |
 |----------|--------|
-| **Souris** | Deplacer le personnage (le joueur suit la souris avec le comportement `arrive`) |
-| **D** | Activer / desactiver le mode Debug (visualisation technique) |
-| **P / Echap** | Mettre en pause et revenir au menu d'accueil |
-| **Clic sur Jouer/Reprendre** | Lancer ou reprendre la partie (avec compte a rebours 3-2-1) |
+| **Souris** | Déplacer le personnage (comportement `arrive` vers la souris) |
+| **Espace** | Changer le comportement des étoiles qui vous suivent : **snake** (chaîne) ou **banc** (groupe) |
+| **D** | Activer / désactiver le mode Debug |
+| **P / Échap** | Pause — retour au menu ; clic sur « Reprendre » pour continuer (compte à rebours 3-2-1) |
+| **Menu** | Choisir un **mode** (Normal, Facile, Moyen, Difficile), puis cliquer **JOUER** pour valider et lancer la partie |
 
 ---
 
-## Fonctionnalites
+## Modes de jeu
 
-- **Page d'accueil** : menu avec concept du jeu, controles, monstres (a gauche) et tableau des 5 meilleurs scores avec medailles or/argent/bronze (a droite).
-- **Pause** : appuyez sur P ou Echap pour revenir au menu. Cliquez "Reprendre" pour un compte a rebours 3-2-1 avant de continuer.
-- **Historique des scores** : les 5 meilleurs scores de la session sont affiches dans le menu avec medailles (or, argent, bronze pour le top 3).
-- **Collecte d'etoiles** : 8 etoiles (checkpoints) sont reparties sur l'ecran. Elles reapparaissent 3 secondes apres avoir ete collectees.
-- **Progression par niveaux** : toutes les 5 etoiles collectees, le joueur passe au niveau suivant. Un nouvel ennemi apparait a chaque niveau.
-- **15 niveaux** avec une difficulte progressive (voir section Monstres).
-- **4 coeurs de vie** affiches derriere le joueur sous forme de chaine souple (comportement snake/worm avec `arrive`).
-- **Degats a la tete uniquement** : seul un contact avec la pointe avant du joueur cause des degats.
-- **Invulnerabilite temporaire** apres chaque coup recu (clignotement).
-- **Collectables aleatoires** : des coeurs (soin) et des boucliers (invulnerabilite) apparaissent periodiquement.
-- **Obstacles mobiles** : des asteroides (images) se deplacent en errance (`wander`), evitent les autres obstacles et les etoiles, et traversent les bords de l'ecran (wrap-around).
-- **Animation de Level Up** : pause de 2 secondes avec message clignotant "NIVEAU X".
-- **Ecran de victoire** : au niveau 15, les monstres explosent en slow motion avec un message "BRAVO !".
-- **Mode Debug** : visualisation des cercles de collision, rayons de perception, vecteurs de velocite, zone de boundaries, FPS, et connexions de la chaine de coeurs.
+Le mode est choisi au menu (4 boutons) et validé en cliquant sur **JOUER**. Les monstres et niveaux dépendent du mode.
+
+| Mode | Niveaux | Monstres |
+|------|---------|----------|
+| **Normal** | 0-4 | Monstre 0 (1 cœur, vision 300 px) |
+| | 5-9 | Monstre 1 (2 cœurs, vision 200 px) |
+| | 10-14 | Monstre Max (3 cœurs, vision 130 px) |
+| | 15-19 | Serpent boss (4 cœurs, vision 20 px) |
+| **Facile** | 1-20 | Uniquement Monstre 0 (1 cœur) |
+| **Moyen** | 1-10 | Monstre 1 (2 cœurs) |
+| | 11-20 | Monstre Max (3 cœurs) |
+| **Difficile** | 1-10 | Monstre Max (3 cœurs) |
+| | 11-20 | Serpent (4 cœurs) |
+
+Le **tableau des meilleurs scores** affiche une colonne **Mode** pour chaque partie (Normal, Facile, Moyen, Difficile), afin de comparer les scores dans le même mode.
 
 ---
 
-## Systeme de niveaux
+## Système de vies (cœurs)
 
-| Niveaux | Monstre | Image | Degats | Vision (rayon) | Vitesse max | Force max |
-|---------|---------|-------|--------|----------------|-------------|-----------|
-| 1 - 5 | Monster 0 | `monster0.png` | 1 coeur | 300 px (grande) | 4.5 | 0.20 |
-| 6 - 10 | Monster 1 | `monster1.png` | 2 coeurs | 200 px (moyenne) | 5.0 | 0.28 |
-| 11 - 15 | Monster Max | `MonsterMax.png` | 3 coeurs | 130 px (petite) | 5.5 | 0.35 |
+- **Départ** : **5 cœurs pleins** (affichés dans la **barre centrée en haut** uniquement).
+- **Perte d’une vie** : un cœur passe en **noir** (cœur mort) dans la barre ; il reste affiché, seul l’état change.
+- **Bonus** : en ramassant un **cœur** (collectable) alors que toutes les vies sont pleines, on peut gagner **1 ou 2 cœurs permanents** en plus (6e puis 7e). Au-delà de **7 cœurs** au total, on ne peut plus en ramasser.
+- **Niveau suivant** : toutes les vies sont restaurées (jusqu’à `maxLives`).
+- **Étoiles qui suivent** : **Espace** alterne le mode **snake** (chaîne avec `arrive`) ou **banc** (separate + align + cohesion + arrive) — Règle 5.
 
-**Principe d'equilibre** : plus un monstre fait de degats, plus son rayon de vision est petit. Ainsi, le Monster Max est le plus letal mais doit s'approcher tres pres pour detecter le joueur.
+---
 
-### Comportement des monstres
+## Fonctionnalités actuelles
 
-- **Dans le rayon de vision** : le monstre utilise `pursue` pour anticiper la position future du joueur et l'intercepter.
-- **Hors du rayon de vision** : le monstre erre aleatoirement avec `wander`.
-- **Toujours** : chaque monstre utilise `avoidObstacles` (eviter les asteroides), `separate` (garder une distance avec les autres monstres), et `boundaries` (rester dans la zone de jeu).
+- **Page d’accueil** : concept, contrôles (Souris, **Espace** snake/banc, D, P), **4 boutons de mode** (Normal, Facile, Moyen, Difficile) avec thème couleur, **description des monstres** (icônes, cœurs, niveaux) selon le mode choisi, progression (20 niveaux, 5 étoiles/niveau), **tableau des meilleurs scores** avec colonne **Mode**, bouton **JOUER** / **REPRENDRE**. Style **pixel** (police type rétro, boutons à bords droits).
+- **Pause** : P ou Échap → retour au menu ; **REPRENDRE** avec compte à rebours 3-2-1.
+- **20 niveaux** (0 à 19) : 5 étoiles par niveau pour passer au suivant ; un nouvel ennemi apparaît à chaque niveau (selon le mode).
+- **5 cœurs par défaut, 7 max** : barre centrée en haut ; cœurs perdus restent en noir. **Espace** : alterner snake / banc pour les étoiles qui suivent.
+- **Dégâts à la tête uniquement** : contact avec la pointe avant du joueur ; invulnérabilité temporaire après coup (clignotement).
+- **Collectables** : cœurs (soin ou +1 cœur permanent si déjà pleins, max 7) et boucliers (invulnérabilité temporaire).
+- **Obstacles mobiles** : astéroïdes avec `wander`, `separate`, `flee` (étoiles), wrap-around.
+- **Sons (style rétro)** : ramassage cœur/bouclier, dégâts (selon type de monstre), passage de niveau, victoire, game over ; **musique de fond** en jeu : thème doux, aventureux et encourageant (mélodie en boucle avec légère basse), qui accompagne toute la partie.
+- **Écrans** : Level Up (NIVEAU X), Victoire (BRAVO !), Game Over ; police pixel sur tous les écrans.
+- **Mode Debug** : cercles de collision, rayons de perception, vecteurs, boundaries, FPS, chaîne des cœurs.
+
+---
+
+## Système de niveaux et monstres (mode Normal)
+
+| Niveaux | Monstre | Dégâts | Vision | Vitesse max | Force max |
+|---------|---------|--------|--------|-------------|-----------|
+| 0-4 | Monster 0 | 1 cœur | 300 px | 4.5 | 0.20 |
+| 5-9 | Monster 1 | 2 cœurs | 200 px | 5.0 | 0.28 |
+| 10-14 | Monster Max | 3 cœurs | 130 px | 5.5 | 0.35 |
+| 15-19 | Serpent (boss) | 4 cœurs | 20 px | 6.0 | 0.40 |
+
+**Équilibre** : plus un monstre fait de dégâts, plus son rayon de vision est petit.
+
+**Comportement des monstres** : dans le rayon de vision → `pursue` (joueur) ; hors vision → `wander` ; toujours → `avoidObstacles`, `separate`, `boundaries`.
+
+---
+
+## Respect des consignes du cours et règles (rules.md)
+
+Le fichier **`rules.md`** (à la racine du projet, dans `11-CosmicSurvivor/`) définit les consignes à respecter. Résumé :
+
+- **Règle 1 — Base :** **`vehicle.js` n’est jamais modifié.** Il contient la classe `Vehicle` et toutes les méthodes de steering (seek, flee, arrive, pursue, evade, wander, avoidObstacles, separate, boundaries, edges).
+- **Règle 2 — Sous-classes :** Toutes les entités sont des **sous-classes** dans `vehicles/` : `PlayerVehicle`, `HeartSegment`, `HunterVehicle`, `ObstacleVehicle`. Chacune surcharge `applyBehaviors(world)`, `show()`, `update()`.
+- **Règle 3 — Forces composables :** Chaque comportement **retourne** un vecteur force (il ne l’applique pas). Dans `applyBehaviors(world)` : appeler les comportements, multiplier chaque force par un **poids**, sommer, puis appliquer une seule fois avec `applyForce()`. Les forces sont bornées par `maxForce` et `maxSpeed`.
+- **Règle 7 — Architecture :** `sketch.js` = entrée principale (preload, setup, draw, UI, `Particle`, `Collectable`). États de jeu : `"menu"`, `"countdown"`, `"playing"`, `"gameover"`, `"levelup"`, `"victory"`. L’objet **`world`** (player, hunters, obstacles, checkpoints, allVehicles, debugMode) est passé à tous les `applyBehaviors(world)`.
+
+Les règles complètes (assets, style, tableau des comportements) sont dans **`rules.md`** : à respecter pour tout ajout ou modification.
 
 ---
 
 ## Partie technique
 
-### Architecture
-
-Le projet respecte strictement les consignes du cours :
-- **`vehicle.js` n'est JAMAIS modifie**. Il definit la classe `Vehicle` de base avec toutes les methodes de steering.
-- Toutes les entites sont des **sous-classes** qui etendent `Vehicle` et surchargent `applyBehaviors()`, `show()`, et `update()`.
-- Les forces sont **composables** : chaque comportement retourne un vecteur force, multiplie par un poids, et l'ensemble est limite par `maxForce` / `maxSpeed`.
-
 ### Fichiers du projet
 
-| Fichier | Role |
+| Fichier | Rôle |
 |---------|------|
-| `vehicle.js` | Classe `Vehicle` de base (NON MODIFIEE) -- definit seek, flee, arrive, pursue, evade, wander, avoidObstacles, separate, boundaries |
-| `vehicles/playerVehicle.js` | Classes `HeartSegment` et `PlayerVehicle` -- joueur + chaine de coeurs |
-| `vehicles/hunterVehicle.js` | Classe `HunterVehicle` -- monstres ennemis (3 types) |
-| `vehicles/obstacleVehicle.js` | Classe `ObstacleVehicle` -- asteroides mobiles |
-| `checkpoint.js` | Classe `Checkpoint` -- etoiles collectables |
-| `sketch.js` | Logique principale : gameloop, UI, etats du jeu, particules, classe `Collectable`, classe `Particle` |
-| `index.html` | Page HTML (charge p5.js + tous les scripts) |
-| `style.css` | Style plein ecran |
+| `vehicle.js` | Classe `Vehicle` de base (**non modifiée**) — seek, flee, arrive, pursue, evade, wander, avoidObstacles, separate, boundaries |
+| `vehicles/playerVehicle.js` | `HeartSegment` (chaîne avec `arrive`), `PlayerVehicle` (arrive souris/étoile, avoidObstacles, separate, boundaries) |
+| `vehicles/hunterVehicle.js` | `HunterVehicle` — pursue / wander, avoidObstacles, separate, boundaries |
+| `vehicles/obstacleVehicle.js` | `ObstacleVehicle` — wander, separate, flee (étoiles), wrapAround |
+| `checkpoint.js` | `Checkpoint` — étoiles collectables |
+| `sketch.js` | Gameloop, états, menu, UI, sons, particules, `Collectable`, `Particle` |
+| `index.html` | Page HTML, chargement p5.js et scripts |
+| `style.css` | Plein écran, police pixel (Press Start 2P) |
 
-### Mapping des comportements par entite
+### Mapping des comportements par entité (concepts du cours)
 
-| Entite | Comportements de steering utilises |
+| Entité | Comportements de steering utilisés |
 |--------|-----------------------------------|
-| **PlayerVehicle** | `arrive` (souris), `arrive` (etoile proche), `avoidObstacles`, `separate`, `boundaries` |
-| **HeartSegment** | `arrive` (suit le segment precedent -- pattern snake du Projet 3) |
+| **PlayerVehicle** | `arrive` (souris), `arrive` (étoile proche), `avoidObstacles`, `separate`, `boundaries` |
+| **HeartSegment** | `arrive` (suit le segment précédent — pattern snake / Projet 3) |
+| **StarSegment** | `arrive` (snake) ou `separate` + `arrive` (cohesion) + align (banc / Projet 7) |
 | **HunterVehicle** | `pursue` (joueur en vue), `wander` (hors vue), `avoidObstacles`, `separate`, `boundaries` |
-| **ObstacleVehicle** | `wander` (errance aleatoire), `separate` (entre obstacles), `flee` (eviter les etoiles) |
+| **ObstacleVehicle** | `wander`, `separate`, `flee` (étoiles), wrap-around (hors steering) |
+
+### Détail des comportements (référence cours)
+
+- **Arrive** : vitesse désirée réduite dans un rayon de ralentissement ; utilisé pour le joueur (souris) et la chaîne de cœurs (follow-the-leader).
+- **Seek / Flee** : force vers/contre une cible à pleine vitesse ; flee utilisé par les obstacles pour éviter les étoiles.
+- **Pursue** : seek vers la position future de la cible (prédiction) ; utilisé par les monstres pour intercepter le joueur.
+- **Wander** : cercle projeté devant le véhicule, angle aléatoire ; utilisé par monstres (hors vue) et obstacles.
+- **AvoidObstacles** : détection d’obstacle devant, force d’évitement ; joueur et monstres.
+- **Separate** : répulsion proportionnelle à l’inverse de la distance entre voisins ; joueur, monstres, obstacles.
+- **Boundaries** : force de répulsion dans une marge (50 px) autour de l’écran ; joueur et monstres.
 
 ---
 
-## Detail des comportements implementes
+## Lancer le jeu
 
-### 1. Arrive (PlayerVehicle, HeartSegment)
-
-**Logique** : calcule un vecteur desire vers la cible. Si la distance est inferieure au rayon de ralentissement (`slowRadius`), la vitesse desiree est reduite proportionnellement a la distance. La force de steering est la difference entre la vitesse desiree et la vitesse actuelle, limitee par `maxForce`.
-
-**Utilisation joueur** : le joueur suit la souris avec `arrive(mousePos, 50)` (poids 3.0). Quand il est proche de la souris, il ralentit naturellement au lieu de depasser et osciller.
-
-**Utilisation coeurs** : chaque `HeartSegment` utilise `arrive(segmentPrecedent.pos, 30)` (poids 2.5) pour creer une chaine souple derriere le joueur. Le premier coeur suit l'arriere de la tete, les suivants suivent le coeur precedent. C'est le pattern "follow-the-leader" du Projet 3 (Arrival/Snake).
-
-### 2. Seek / Flee (Vehicle base)
-
-**Logique Seek** : calcule un vecteur desire de `this.pos` vers `target`, normalise a `maxSpeed`. La force est `desired - velocity`, limitee par `maxForce`. Toujours a pleine vitesse vers la cible.
-
-**Logique Flee** : inverse de seek (`seek(target).mult(-1)`). Fuit la cible a pleine vitesse.
-
-**Utilisation** : `ObstacleVehicle` utilise `flee` pour eviter les etoiles (checkpoints). Quand un obstacle s'approche d'une etoile non collectee a moins de `radius + 20px`, il applique une force de fuite (poids 2.0) pour ne pas la recouvrir.
-
-### 3. Pursue (HunterVehicle)
-
-**Logique** : calcule la position future de la cible en fonction de sa velocite et de la distance (`prediction = distance / maxSpeed`). Puis applique `seek` vers cette position future. Cela permet au monstre d'anticiper le mouvement du joueur au lieu de simplement le suivre.
-
-**Utilisation** : le `HunterVehicle` utilise `pursue(player)` (poids 1.5) quand le joueur est dans son rayon de perception. Quand le joueur est hors de portee, le monstre passe en mode `wander`.
-
-### 4. Wander (HunterVehicle, ObstacleVehicle)
-
-**Logique** : projette un cercle de rayon `wanderRadius` (50) a une distance `distanceCercle` (150) devant le vehicule. Un angle aleatoire (`wanderTheta`) varie legerement a chaque frame (`+/- 0.3`). Le point cible est sur ce cercle, et `seek` est applique vers ce point. Cela produit un mouvement erratique mais fluide.
-
-**Utilisation monstres** : quand le joueur est hors du rayon de perception, le monstre erre en utilisant `wander()` (poids 0.5). Cela simule une patrouille aleatoire naturelle.
-
-**Utilisation obstacles** : les asteroides se deplacent en permanence avec `wander()` (poids 0.5). Chacun a sa propre direction initiale aleatoire et sa propre vitesse.
-
-### 5. Avoid Obstacles (PlayerVehicle, HunterVehicle)
-
-**Logique** : projette un point `aheadPos` a 30px devant le vehicule (dans la direction de la velocite). Verifie si ce point entre en collision avec un obstacle. Si oui, calcule un vecteur d'evitement (de l'obstacle vers le point ahead), normalise et amplifie a `maxForce * 3`.
-
-**Utilisation** : le joueur applique `avoidObstacles(obstacles)` avec un poids de 2.0. Les monstres l'appliquent avec un poids de 4.0 (priorite elevee) pour ne jamais traverser les asteroides.
-
-### 6. Separate (tous les vehicules)
-
-**Logique** : pour chaque voisin dans un rayon de perception, calcule un vecteur de difference (`this.pos - other.pos`), normalise et divise par la distance (plus le voisin est proche, plus la force est grande). La somme est normalisee, mise a `maxSpeed`, puis la force de steering est calculee.
-
-**Utilisation** :
-- `PlayerVehicle` : separation des autres vehicules (rayon 60px, poids 1.5)
-- `HunterVehicle` : separation des autres monstres (rayon 40px, poids 1.5)
-- `ObstacleVehicle` : separation des autres obstacles (rayon `r * 2.5`, poids 1.8)
-
-### 7. Boundaries (PlayerVehicle, HunterVehicle)
-
-**Logique** : definit une marge de 50px autour de l'ecran. Quand le vehicule entre dans cette marge, un vecteur desire est calcule pour le repousser vers l'interieur. La force de steering est `desired - velocity`, limitee par `maxForce`. C'est une force de **repulsion** (pas un clamp dur).
-
-**Utilisation** : le joueur et les monstres appliquent `boundaries()` avec un poids de 3.0. Les obstacles n'utilisent pas boundaries ; ils utilisent `wrapAround` (reapparition du cote oppose).
-
-### 8. Wrap Around (ObstacleVehicle)
-
-**Logique** : quand un obstacle sort de l'ecran (au-dela de `margin = radius + 20`), il reapparait du cote oppose. Cela cree un flux continu d'asteroides qui entrent et sortent de la zone de jeu.
+- Ouvrir `index.html` dans un navigateur (ou servir le dossier avec un serveur HTTP, ex. `python -m http.server 8888` puis `http://localhost:8888`).
+- Un script **`run.bat`** est fourni pour démarrer un serveur et ouvrir le jeu sous Windows.
 
 ---
 
-## Mode Debug
+## Résumé
 
-Activez le mode debug (touche **D** ou bouton en haut a droite) pour visualiser :
-
-- **Joueur** : cercle de collision (cyan), point de tete (rouge), vecteur velocite, ligne vers la souris, chaine des coeurs avec connexions
-- **Monstres** : cercle de perception (rouge transparent), cercle de collision, vecteur velocite, ligne vers le joueur si en poursuite, label "T0 D1" (type et degats)
-- **Obstacles** : cercle de collision (orange), vecteur velocite (vert), zone de separation
-- **General** : rectangle jaune de boundaries (50px), FPS, compteurs d'entites
-
----
-
-## Notes techniques
-
-- Le code respecte strictement les **regles du cours** definies dans `rules.md`.
-- `vehicle.js` n'est **jamais modifie**.
-- Toutes les extensions passent par des sous-classes dans `vehicles/`.
-- Chaque `applyBehaviors()` combine des forces de steering avec des poids puis applique la somme via `applyForce()`.
-- Les images des entites sont chargees dans `preload()` (p5.js) pour garantir qu'elles sont disponibles avant `setup()`.
-- Le fond d'espace est genere par code (200 etoiles aleatoires + scintillement) pour eviter les problemes CORS en mode `file://`.
+Cosmic Survivor applique les **comportements de steering de Craig Reynolds** dans un jeu de survie spatial : joueur, monstres, obstacles et chaîne de cœurs sont tous des **véhicules** dont le mouvement est entièrement piloté par des **forces composables** issues de la classe de base. Le fichier **`vehicle.js`** reste inchangé ; toutes les extensions passent par des **sous-classes** et le respect strict de **`rules.md`**.
