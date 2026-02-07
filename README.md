@@ -1,19 +1,4 @@
-# 11 - Cosmic Survivor
-
-## Captures d’écran — écrans à fournir
-
-Pour que les images s’affichent correctement dans le README, placez les captures dans le dossier **`screens/`** avec **exactement** les noms suivants (double sens : nom descriptif + nom de fichier) :
-
-| Nom du fichier | Description |
-|----------------|-------------|
-| **`Home.png`** | Page d’accueil : menu, 4 modes, tableau des scores, bouton JOUER/REPRENDRE. |
-| **`Game.png`** | Partie en cours : joueur, étoiles, monstres, barre de cœurs, score/temps/niveau. |
-| **`debug.png`** | Même écran avec mode Debug (D) : boundaries, FPS, cercles de perception, vecteurs. |
-| **`Bravo.png`** | Écran de victoire après les 20 niveaux (message BRAVO !, score, temps). |
-
-*(Évitez les caractères spéciaux dans les noms de fichiers pour simplifier.)*
-
----
+# Cosmic Survivor
 
 ## Captures d’écran (affichage)
 
