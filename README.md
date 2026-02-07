@@ -1,5 +1,12 @@
 # Cosmic Survivor
 
+**Auteur :** Saad Bendahou  
+
+- **Jeu en ligne (GitHub Pages) :** [https://saadbenth7o.github.io/CosmicSurvivor_game/](https://saadbenth7o.github.io/CosmicSurvivor_game/)  
+- **Vidéo YouTube :** [https://youtu.be/bacZiR3kJQU](https://youtu.be/bacZiR3kJQU)
+
+---
+
 ## Captures d’écran
 
 ### Page d’accueil (Rampage)
